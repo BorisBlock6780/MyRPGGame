@@ -1,4 +1,5 @@
 ﻿#include "ScreenManager.hpp"
+#include "Database.hpp"
 #include <iostream>
 
 bool ScreenManager::loadResources() {
@@ -19,6 +20,11 @@ bool ScreenManager::loadResources() {
     return true;
 }
 
+ScreenManager::ScreenManager() {
+    // Инициализация базовой базы данных при создании менеджера
+    GameDatabase::getInstance().init();
+    GameDatabase::getInstance().initItems();
+}
 // Обработка переключения консоли по клавише ~ (Tilde)
 void ScreenManager::processEvent(const sf::Event& event) {
     if (event.type == sf::Event::KeyPressed) {
@@ -112,51 +118,67 @@ void ScreenManager::renderConsole() {
 
 // --- ЭКРАН ИНВЕНТАРЯ ---
 void ScreenManager::renderInventory() {
-    std::string activeTabName = "";
-    switch (currentInventoryTab) {
-    case ItemTab::Weapons:    activeTabName = "Оружие"; break;
-    case ItemTab::Artifacts:  activeTabName = "Артефакты"; break;
-    case ItemTab::Food:       activeTabName = "Еда"; break;
-    case ItemTab::Materials:  activeTabName = "Материалы"; break;
-    case ItemTab::Jewelry:    activeTabName = "Драгоценности"; break;
-    case ItemTab::QuestItems: activeTabName = "Квестовые предметы"; break;
-    }
+    ImGui::Begin("Инвентарь");
 
-    ImGui::Text("=== ИНВЕНТАРЬ | Вкладка: %s ===", activeTabName.c_str());
-    ImGui::Separator();
-    ImGui::Spacing();
+    if (ImGui::BeginTabBar("InventoryTabs")) {
 
-    ImVec2 iconSize = ImVec2(48.0f, 48.0f);
-    struct TabButtonData { ItemTab tab; const char* strId; };
-    TabButtonData inventoryTabs[] = {
-        {ItemTab::Weapons,    "##InvWeapon"},
-        {ItemTab::Artifacts,  "##InvArtifact"},
-        {ItemTab::Food,       "##InvFood"},
-        {ItemTab::Materials,  "##InvMaterials"},
-        {ItemTab::Jewelry,    "##InvJewelry"},
-        {ItemTab::QuestItems, "##InvQuest"}
-    };
+        // 1. Вкладка: Еда и Зелья (Consumable)
+        if (ImGui::BeginTabItem("Еда и Зелья")) {
+            auto consumables = playerInventory.getItemsByCategory(ItemCategory::Consumable);
 
-    for (int i = 0; i < 6; ++i) {
-        if (i > 0) ImGui::SameLine();
-        ItemTab tab = inventoryTabs[i].tab;
-        ImTextureID textureId = (ImTextureID)(intptr_t)tabTextures[tab].getNativeHandle();
+            for (size_t i = 0; i < consumables.size(); ++i) {
+                const auto& stack = consumables[i];
+                const auto& itemData = GameDatabase::getInstance().items[stack.itemId];
 
-        bool isActive = (currentInventoryTab == tab);
-        if (isActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.5f, 0.8f, 1.0f));
+                ImGui::PushID(static_cast<int>(i));
 
-        if (ImGui::ImageButton(inventoryTabs[i].strId, textureId, iconSize)) {
-            currentInventoryTab = tab;
+                // Кнопка-иконка из базы данных
+                if (ImGui::ImageButton(itemData.getImGuiTextureID(), ImVec2(64, 64))) {
+                    // Логика использования предмета
+                    playerInventory.removeItem(stack.itemId, 1);
+                }
+
+                ImGui::SameLine();
+                ImGui::Text("%s\nКол-во: %d", itemData.name.c_str(), stack.count);
+
+                // По 4 элемента в строку
+                if ((i + 1) % 4 != 0 && i + 1 < consumables.size()) {
+                    ImGui::SameLine();
+                }
+
+                ImGui::PopID();
+            }
+            ImGui::EndTabItem();
         }
 
-        if (isActive) ImGui::PopStyleColor();
+        // 2. Вкладка: Ресурсы (Material)
+        if (ImGui::BeginTabItem("Ресурсы")) {
+            auto materials = playerInventory.getItemsByCategory(ItemCategory::Material);
+
+            for (size_t i = 0; i < materials.size(); ++i) {
+                const auto& stack = materials[i];
+                const auto& itemData = GameDatabase::getInstance().items[stack.itemId];
+
+                ImGui::PushID(1000 + static_cast<int>(i));
+
+                ImGui::ImageButton(itemData.getImGuiTextureID(), ImVec2(64, 64));
+                ImGui::SameLine();
+                ImGui::Text("%s\nКол-во: %d", itemData.name.c_str(), stack.count);
+
+                if ((i + 1) % 4 != 0 && i + 1 < materials.size()) {
+                    ImGui::SameLine();
+                }
+
+                ImGui::PopID();
+            }
+            ImGui::EndTabItem();
+        }
+
+        ImGui::EndTabBar();
     }
 
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Text("Содержимое инвентаря для категории «%s»...", activeTabName.c_str());
+    ImGui::End();
 }
-
 // --- ЭКРАН МАГАЗИНА ---
 void ScreenManager::renderShop() {
     std::string activeTabName = "";

@@ -39,7 +39,10 @@ add_subdirectory(external/imgui-sfml)
 file(GLOB_RECURSE SOURCES "src/*.cpp")
 file(GLOB_RECURSE HEADERS "include/*.hpp")
 
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+add_executable(MyRPGGame 
+    src/main.cpp 
+    src/ScreenManager.cpp
+)
 
 target_include_directories(${PROJECT_NAME} PRIVATE 
     include 

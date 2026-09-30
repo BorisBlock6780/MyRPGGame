@@ -5,6 +5,8 @@
 #include <SFML/Graphics.hpp>
 #include <string>
 #include <unordered_map>
+#include <imgui-SFML.h>
+#include "PlayerData.hpp"
 
 enum class ScreenState {
     MainMenu,
@@ -32,6 +34,7 @@ enum class ItemTab {
 
 class ScreenManager {
 public:
+    ScreenManager();
     ScreenState currentScreen = ScreenState::MainMenu;
     bool shouldQuit = false;
 
@@ -44,9 +47,13 @@ public:
     void update(sf::RenderWindow& window);
     void renderCurrentScreen();
 
+    void renderInventory();
+
 private:
     ItemTab currentInventoryTab = ItemTab::Weapons;
     ItemTab currentShopTab = ItemTab::Weapons;
+    PlayerInventory playerInventory;
+    PlayerProfile playerProfile;
 
     std::unordered_map<ItemTab, sf::Texture> tabTextures;
 
@@ -59,7 +66,6 @@ private:
     void renderSaves();
     void renderLobby();
     void renderShop();
-    void renderInventory();
     void renderMap();
     void renderAchievements();
     void renderSquadEditor();
