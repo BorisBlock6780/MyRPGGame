@@ -13,15 +13,11 @@
 ├── build/                # Директория сборки (в .gitignore)
 ├── docs/                 # Документация и материалы курсового проекта
 ├── include/              # Заголовочные файлы (.h / .hpp)
-│   ├── Characters.hpp
-│   ├── Weapons.hpp
-│   ├── Artifacts.hpp
-│   └── SquadManager.hpp
+│   ├── Database.hpp
+│   ├── PlayerData.hpp
+│   └── ScreenManager.hpp
 ├── src/                  # Исходный код (.cpp)
-│   ├── Characters.cpp
-│   ├── Weapons.cpp
-│   ├── Artifacts.cpp
-│   ├── SquadManager.cpp
+│   ├── ScreenManager.cpp
 │   └── main.cpp
 ├── .gitignore            # Исключения Git
 ├── CMakeLists.txt        # Конфигурация CMake
