@@ -3,90 +3,199 @@
 #include <unordered_map>
 #include <array>
 #include <vector>
+#include <memory>
 #include <SFML/Graphics.hpp>
 #include <imgui.h>
-#include <imgui-SFML.h>
 
 using StatArray = std::array<double, 8>;
 
 namespace StatIndex {
-    enum {
-        HP = 0,
-        Mana = 1,
-        Attack = 2,
-        Defense = 3,
-        CritChance = 4,
-        CritDamage = 5,
-        Vampirism = 6,
-        DamageBonus = 7
-    };
+    enum { HP = 0, Mana = 1, Attack = 2, Defense = 3, CritChance = 4, CritDamage = 5, Vampirism = 6, DamageBonus = 7 };
 }
 
-enum class WeaponRarity { Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5, Unique = 6 };
+enum class ItemCategory { Consumable, Weapon, Artifact, Material, Quest };
 
-enum class ItemCategory {
-    Consumable, // Яблоки, зелья здоровья, еда
-    Weapon,     // Оружие
-    Artifact,   // Артефакты / Браслеты
-    Material,   // Ресурсы, руда, свитки
-    Quest       // Квестовые предметы 
+// ==========================================
+// ИЕРАРХИЯ ШАБЛОНОВ ОРУЖИЯ
+// ==========================================
+class WeaponTemplate {
+protected:
+    std::string id;
+    std::string name;
+    double baseDamage;
+    int level;
+    const int maxLevel = 20;
+
+public:
+    WeaponTemplate(std::string id, std::string name, double baseDamage)
+        : id(std::move(id)), name(std::move(name)), baseDamage(baseDamage), level(1) {
+    }
+
+    virtual ~WeaponTemplate() = default;
+
+    std::string getId() const { return id; }
+    std::string getName() const { return name; }
+    int getLevel() const { return level; }
+
+    // Динамический расчет урона (+8% за каждый уровень заточки)
+    virtual double getBaseDamage() const {
+        return baseDamage * (1.0 + (level - 1) * 0.08);
+    }
+
+    bool upgrade() {
+        if (level >= maxLevel) return false;
+        level++;
+        return true;
+    }
 };
 
-struct ItemTemplate {
-    std::string id;          // "apple", "hp_potion"
-    std::string name;        // "Яблоко"
-    ItemCategory category;   // ItemCategory::Consumable
-    std::string iconPath;    // "assets/icons/apple.png"
-    int maxStack = 99;       // Максимальное количество в слоте
+// Конкретный предмет: Стальной Меч
+class IronSwordTemplate : public WeaponTemplate {
+public:
+    IronSwordTemplate() : WeaponTemplate("iron_sword", "Стальной Меч", 25.0) {}
+};
+
+// Конкретный предмет: Посох Ученика
+class MagicStaffTemplate : public WeaponTemplate {
+public:
+    MagicStaffTemplate() : WeaponTemplate("magic_staff", "Посох Ученика", 15.0) {}
+};
+// ==========================================
+// ИЕРАРХИЯ ШАБЛОНОВ ПРЕДМЕТОВ
+// ==========================================
+class ItemTemplate {
+protected:
+    std::string id;
+    std::string name;
+    ItemCategory category;
+    std::string iconPath;
+    int maxStack;
     sf::Texture iconTexture;
+
+public:
+    ItemTemplate(std::string id, std::string name, ItemCategory category, std::string iconPath, int maxStack = 99)
+        : id(std::move(id)), name(std::move(name)), category(category), iconPath(std::move(iconPath)), maxStack(maxStack) {
+        if (!iconTexture.loadFromFile(this->iconPath)) {
+            iconTexture.loadFromFile("assets/icons/missing.png");
+        }
+    }
+    virtual ~ItemTemplate() = default;
+
+    std::string getId() const { return id; }
+    std::string getName() const { return name; }
+    ItemCategory getCategory() const { return category; }
+
     ImTextureID getImGuiTextureID() const {
         return (ImTextureID)(uintptr_t)iconTexture.getNativeHandle();
     }
 };
 
-struct WeaponTemplate {
-    std::string id;
-    std::string name;
-    WeaponRarity rarity;
-    double baseDamage;        // Базовый урон
-    StatArray bonusStats;     // Массив доп. характеристик
-    std::string effectDesc;   // Описание спец-эффекта (для 4*+)
+// Конкретный предмет: Яблоко
+class AppleTemplate : public ItemTemplate {
+public:
+    AppleTemplate() : ItemTemplate("apple", "Яблоко", ItemCategory::Consumable, "assets/apple.png", 99) {}
 };
 
-// --- Структура для формулы умения ---
-struct SkillTemplate {
-    std::string id;          // "fireball"
-    std::string name;        // "Огненная Стрела"
-    int scalingStatIndex;    // Какой стат берем за основу (например, StatIndex::Attack или StatIndex::Mana)
-    double scalingRatio;     // Множитель (0.60 = 60%, 0.50 = 50%)
-    double flatBonus;        // Плоская прибавка к урону (например, +20 единиц)
-    int cooldown;            // Кулдаун в ходах
+// Конкретный предмет: Железная руда
+class IronOreTemplate : public ItemTemplate {
+public:
+    IronOreTemplate() : ItemTemplate("iron_ore", "Железная руда", ItemCategory::Material, "assets/ore.png", 999) {}
+};
 
-    // Метод расчета итогового значения урона/лечения
-    double calculateValue(const StatArray& stats) const {
-        if (scalingStatIndex < 0 || scalingStatIndex >= 8) return flatBonus;
 
-        // Значение стата * Множитель + Базовый урон
-        double baseValue = (stats[scalingStatIndex] * scalingRatio) + flatBonus;
+// ==========================================
+// ИЕРАРХИЯ ШАБЛОНОВ УМЕНИЙ
+// ==========================================
+class SkillTemplate {
+protected:
+    std::string id;
+    std::string name;
+    int cooldown;
 
-        // Если урон скалируется от Атаки — учитываем общий Бонус Урона персонажа
-        if (scalingStatIndex == StatIndex::Attack) {
-            baseValue *= (1.0 + stats[StatIndex::DamageBonus]);
-        }
+public:
+    SkillTemplate(std::string id, std::string name, int cooldown)
+        : id(std::move(id)), name(std::move(name)), cooldown(cooldown) {
+    }
 
-        return baseValue;
+    virtual ~SkillTemplate() = default;
+
+    std::string getId() const { return id; }
+    std::string getName() const { return name; }
+    int getCooldown() const { return cooldown; }
+
+    // Виртуальный метод расчета урона, теперь учитывающий skillStacks
+    virtual double calculateValue(const StatArray& stats, int skillStacks) const = 0;
+};
+
+// Конкретное умение: Обычная атака Адеира
+class AdeirBasicAtkTemplate : public SkillTemplate {
+public:
+    AdeirBasicAtkTemplate() : SkillTemplate("Adeir_basic_atk", "Обычная атака", 0) {}
+
+    double calculateValue(const StatArray& stats, int skillStacks) const override {
+        // Урон: 60% от Атаки + бонусный урон за каждый накопленный стак
+        double baseValue = (stats[StatIndex::Attack] * 0.60) + (skillStacks * 15.0);
+        return baseValue * (1.0 + stats[StatIndex::DamageBonus]);
     }
 };
 
-// --- Шаблон Персонажа ---
-struct CharacterTemplate {
+// Конкретное умение: Взрыв магии Адеира
+class AdeirMagicBlastTemplate : public SkillTemplate {
+public:
+    AdeirMagicBlastTemplate() : SkillTemplate("Adeir_magic_blast", "Взрыв Магии", 2) {}
+
+    double calculateValue(const StatArray& stats, int skillStacks) const override {
+        // Урон: 50% от Маны + плоская прибавка, стаки увеличивают процент скейла
+        double scaleMult = 0.50 + (skillStacks * 0.05);
+        return (stats[StatIndex::Mana] * scaleMult) + 10.0;
+    }
+};
+
+
+// ==========================================
+// ОБНОВЛЕННЫЙ ШАБЛОН ПЕРСОНАЖА
+// ==========================================
+class CharacterTemplate {
+protected:
     std::string id;
     std::string name;
     StatArray baseStats;
     StatArray growthPerLevel;
-    std::vector<SkillTemplate> skills; // Список умений персонажа
+
+    // Хранение умений через указатели для поддержки полиморфизма
+    std::vector<std::shared_ptr<SkillTemplate>> skills;
+
+public:
+    CharacterTemplate(std::string id, std::string name, StatArray base, StatArray growth, std::vector<std::shared_ptr<SkillTemplate>> skills)
+        : id(std::move(id)), name(std::move(name)), baseStats(base), growthPerLevel(growth), skills(std::move(skills)) {
+    }
+
+    virtual ~CharacterTemplate() = default;
+
+    std::string getId() const { return id; }
+    std::string getName() const { return name; }
+    const std::vector<std::shared_ptr<SkillTemplate>>& getSkills() const { return skills; }
+    const StatArray& getBaseStats() const { return baseStats; }
+    const StatArray& getGrowthPerLevel() const { return growthPerLevel; }
 };
 
+// Конкретный шаблон: Адеир
+class AdeirTemplate : public CharacterTemplate {
+public:
+    AdeirTemplate() : CharacterTemplate(
+        "adeir",
+        "Адеир",
+        { 110.0, 90.0, 18.0, 14.0, 0.05, 1.50, 0.0, 0.0 },
+        { 12.0,  10.0,  3.0,  2.0, 0.00, 0.00, 0.0, 0.0 },
+        {
+            std::make_shared<AdeirBasicAtkTemplate>(),
+            std::make_shared<AdeirMagicBlastTemplate>()
+        }
+    ) {
+    }
+};
+
+// Класс Базы Данных (фрагмент)
 class GameDatabase {
 public:
     static GameDatabase& getInstance() {
@@ -94,70 +203,21 @@ public:
         return instance;
     }
 
-    std::unordered_map<std::string, CharacterTemplate> characters;
+    // Хранилища умных указателей
+    std::unordered_map<std::string, std::shared_ptr<CharacterTemplate>> characters;
+    std::unordered_map<std::string, std::shared_ptr<WeaponTemplate>> weapons; // <- Возвращаем словарь оружия
+    std::unordered_map<std::string, std::shared_ptr<ItemTemplate>> items;
 
     void init() {
-        // Задаем персонажа Адеир с его навыками
-        characters["adeir"] = {
-            "adeir",
-            "Адеир",
-            { 110.0, 90.0, 18.0, 14.0, 0.05, 1.50, 0.0, 0.0 }, // Base Stats
-            { 12.0,  10.0,  3.0,  2.0, 0.00, 0.00, 0.0, 0.0 }, // Growth
-            {
-                // Навык 0: Обычная атака (60% от Атаки)
-                { "basic_atk", "Обычная атака", StatIndex::Attack, 0.60, 0.0, 0 },
+        // Инициализация персонажей
+        characters["adeir"] = std::make_shared<AdeirTemplate>();
 
-                // Навык 1: Взрыв Магии (50% от Маны)
-                { "magic_blast", "Взрыв Магии", StatIndex::Mana, 0.50, 10.0, 2 },
+        // Инициализация шаблонов оружия
+        weapons["iron_sword"] = std::make_shared<IronSwordTemplate>();
+        weapons["magic_staff"] = std::make_shared<MagicStaffTemplate>();
 
-                // Навык 2: Щит от Защиты (80% от Защиты)
-                { "shield", "Каменный Щит", StatIndex::Defense, 0.80, 5.0, 3 }
-            }
-        };
-        weapons["iron_sword"] = {
-            "iron_sword",
-            "Стальной Меч",
-            WeaponRarity::Common,
-            25.0, // baseDamage -> идет в Атаку
-            //   HP,   MP,  ATK,  DEF, Crit%, CritDmg, Vamp, DmgBonus
-            {   0.0,  0.0,  0.0,  0.0,  0.10,    0.0,   0.0,    0.0 }, // +10% Крита
-            ""
-        };
-
-        // 2. Волшебный посох: даёт Ману и Атаку
-        weapons["magic_staff"] = {
-            "magic_staff",
-            "Посох Ученика",
-            WeaponRarity::Rare,
-            15.0, // baseDamage
-            //   HP,   MP,  ATK,  DEF, Crit%, CritDmg, Vamp, DmgBonus
-            {   0.0, 50.0,  0.0,  0.0,   0.0,    0.0,   0.0,    0.0 }, // +50 Маны
-            ""
-        };
-    }
-    std::unordered_map<std::string, WeaponTemplate> weapons;
-    
-    std::unordered_map<std::string, ItemTemplate> items;
-
-    void registerItem(const std::string& id, const std::string& name, ItemCategory category, const std::string& iconPath) {
-        ItemTemplate item;
-        item.id = id;
-        item.name = name;
-        item.category = category;
-        item.iconPath = iconPath;
-
-        // Автоматически загружаем иконку с диска при старте игры
-        if (!item.iconTexture.loadFromFile(iconPath)) {
-            // Если иконка не найдена, загружаем дефолтную заглушку или выводим ошибку
-            item.iconTexture.loadFromFile("assets/icons/missing.png");
-        }
-
-        items[id] = std::move(item);
-    }
-
-    void initItems() {
-        items["apple"] = { "apple", "Яблоко", ItemCategory::Consumable, "assets/apple.png", 99 };
-        items["hp_potion"] = { "hp_potion", "Зелье HP", ItemCategory::Consumable, "assets/potion.png", 99 };
-        items["iron_ore"] = { "iron_ore", "Железная руда", ItemCategory::Material, "assets/ore.png", 999 };
+        // Инициализация предметов
+        items["apple"] = std::make_shared<AppleTemplate>();
+        items["iron_ore"] = std::make_shared<IronOreTemplate>();
     }
 };
