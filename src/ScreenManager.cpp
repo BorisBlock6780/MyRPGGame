@@ -1,6 +1,7 @@
 ﻿#include "ScreenManager.hpp"
 #include "Database.hpp"
 #include <iostream>
+#include <imgui.h>
 
 bool ScreenManager::loadResources() {
     std::unordered_map<ItemTab, std::string> paths = {
@@ -23,7 +24,6 @@ bool ScreenManager::loadResources() {
 ScreenManager::ScreenManager() {
     // Инициализация базовой базы данных при создании менеджера
     GameDatabase::getInstance().init();
-    GameDatabase::getInstance().initItems();
 }
 // Обработка переключения консоли по клавише ~ (Tilde)
 void ScreenManager::processEvent(const sf::Event& event) {
@@ -133,13 +133,11 @@ void ScreenManager::renderInventory() {
                 ImGui::PushID(static_cast<int>(i));
 
                 // Кнопка-иконка из базы данных
-                if (ImGui::ImageButton(itemData.getImGuiTextureID(), ImVec2(64, 64))) {
-                    // Логика использования предмета
+                if (ImGui::ImageButton(itemData->getImGuiTextureID(), ImVec2(64, 64))) {
                     playerInventory.removeItem(stack.itemId, 1);
                 }
-
                 ImGui::SameLine();
-                ImGui::Text("%s\nКол-во: %d", itemData.name.c_str(), stack.count);
+                ImGui::Text("%s\nКол-во: %d", itemData->getName().c_str(), stack.count);
 
                 // По 4 элемента в строку
                 if ((i + 1) % 4 != 0 && i + 1 < consumables.size()) {
@@ -161,9 +159,9 @@ void ScreenManager::renderInventory() {
 
                 ImGui::PushID(1000 + static_cast<int>(i));
 
-                ImGui::ImageButton(itemData.getImGuiTextureID(), ImVec2(64, 64));
+                ImGui::ImageButton(itemData->getImGuiTextureID(), ImVec2(64, 64));
                 ImGui::SameLine();
-                ImGui::Text("%s\nКол-во: %d", itemData.name.c_str(), stack.count);
+                ImGui::Text("%s\nКол-во: %d", itemData->getName().c_str(), stack.count);
 
                 if ((i + 1) % 4 != 0 && i + 1 < materials.size()) {
                     ImGui::SameLine();
@@ -338,7 +336,75 @@ void ScreenManager::renderCharacterEditor() {
     ImGui::Separator(); 
 }
 void ScreenManager::renderCombat() {
-    ImGui::Text("=== ЭКРАН БОЯ ==="); ImGui::Separator(); 
+    ImGui::Text("=== ЭКРАН БОЯ ===");
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // 1. Получаем шаблоны из глобальной базы данных
+    auto& db = GameDatabase::getInstance();
+    auto heroTemplate = db.characters["adeir"];
+    auto weaponTemplate = db.weapons["iron_sword"];
+
+    // Защита от вылета, если база данных еще не инициализирована
+    if (!heroTemplate || !weaponTemplate) {
+        ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "[Ошибка] Данные персонажа или оружия не загружены!");
+        return;
+    }
+
+    // 2. Локальное состояние боя (эмуляция класса PlayerCharacter)
+    static int currentSkillStacks = 0;
+    static double lastDealtDamage = 0.0;
+    static std::string lastUsedSkill = "";
+
+    // 3. Отрисовка UI персонажа
+    ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Боец: %s", heroTemplate->getName().c_str());
+    ImGui::Text("Оружие: %s (Базовый урон: %.1f)", weaponTemplate->getName().c_str(), weaponTemplate->getBaseDamage());
+    ImGui::Text("Боевые стаки: %d", currentSkillStacks);
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Text("Панель умений:");
+
+    // 4. Динамическая генерация кнопок на основе шаблонов умений
+    const auto& skills = heroTemplate->getSkills();
+
+    for (size_t i = 0; i < skills.size(); ++i) {
+        if (i > 0) ImGui::SameLine();
+
+        if (ImGui::Button(skills[i]->getName().c_str(), ImVec2(140, 40))) {
+
+            // Получаем базовые статы персонажа для формулы урона
+            StatArray heroStats = heroTemplate->getBaseStats();
+
+            // Передаем ДВА аргумента: статы и текущие стаки
+            double skillDmg = skills[i]->calculateValue(heroStats, currentSkillStacks);
+
+            lastDealtDamage = weaponTemplate->getBaseDamage() + skillDmg;
+            lastUsedSkill = skills[i]->getName();
+
+            // Эмуляция механики
+            if (i == 0) {
+                currentSkillStacks++;
+            }
+            else {
+                currentSkillStacks = 0;
+            }
+        }
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+
+    // 5. Лог боя
+    ImGui::BeginChild("CombatLog", ImVec2(0, 100), true);
+    if (lastDealtDamage > 0) {
+        ImGui::Text(">>> %s применяет [%s]!", heroTemplate->getName().c_str(), lastUsedSkill.c_str());
+        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Нанесен урон: %.1f", lastDealtDamage);
+    }
+    else {
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Ожидание хода...");
+    }
+    ImGui::EndChild();
 }
 void ScreenManager::renderEnvironmentInteraction() {
     ImGui::Text("=== ВЗАИМОДЕЙСТВИЕ С ОКРУЖЕНИЕМ ===");

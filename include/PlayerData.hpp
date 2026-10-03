@@ -54,52 +54,55 @@ public:
 
         for (const auto& stack : items) {
             auto it = db.find(stack.itemId);
-            if (it != db.end() && it->second.category == category) {
+            if (it != db.end() && it->second->getCategory() == category) {
                 filtered.push_back(stack);
             }
         }
         return filtered;
     }
 };
+
 class PlayerCharacter {
 private:
-    std::string templateId; // Ссылка на ID из базы ("adeir")
-    int level = 1;          // Уровень игрока (1..30)
-    int currentExp = 0;     // Текущий опыт
+    std::string templateId;
+    int level = 1;
+    int currentExp = 0;
 
-    // Заглушка под доп. бонусы от надетых артефактов/оружия
-    StatArray equipmentBonus = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    // Новая переменная для хранения текущих стаков скиллов в бою
+    int skillStacks = 0;
 
 public:
     PlayerCharacter(std::string id, int lvl = 1) : templateId(std::move(id)), level(lvl) {}
 
-    // Геттер динамических (текущих итоговых) характеристик
-    StatArray getTotalStats() const {
-        const auto& db = GameDatabase::getInstance().characters;
-        auto it = db.find(templateId);
-        if (it == db.end()) return {};
+    // Управление стаками
+    void addSkillStack(int amount = 1) { skillStacks += amount; }
+    void resetSkillStacks() { skillStacks = 0; }
+    int getSkillStacks() const { return skillStacks; }
 
-        const CharacterTemplate& tmpl = it->second;
-        StatArray total;
+    StatArray getTotalStats() const {
+        const auto& tmpl = GameDatabase::getInstance().characters.at(templateId);
+        StatArray total = tmpl->getBaseStats();
+        const auto& growth = tmpl->getGrowthPerLevel();
 
         for (size_t i = 0; i < 8; ++i) {
-            // Формула: Базовый стат + (Прирост * кол-во апов) + Шмот
-            total[i] = tmpl.baseStats[i] + (tmpl.growthPerLevel[i] * (level - 1)) + equipmentBonus[i];
+            total[i] += growth[i] * (level - 1);
         }
-
         return total;
     }
 
-    void setLevel(int newLvl) { level = std::min(30, std::max(1, newLvl)); }
-    int getLevel() const { return level; }
+    // Пример вызова навыка с учетом стаков
+    double useSkill(size_t skillIndex) {
+        const auto& tmpl = GameDatabase::getInstance().characters.at(templateId);
+        const auto& skills = tmpl->getSkills();
 
-    std::string getName() const {
-        return GameDatabase::getInstance().characters[templateId].name;
-    }
+        if (skillIndex >= skills.size()) return 0.0;
 
-    // Для добавления бонуса от предметов
-    void addEquipmentBonus(size_t statIndex, double value) {
-        if (statIndex < 8) equipmentBonus[statIndex] += value;
+        StatArray currentStats = getTotalStats();
+
+        // Передаем текущие стаки в полиморфный метод расчета урона
+        double outputValue = skills[skillIndex]->calculateValue(currentStats, skillStacks);
+
+        return outputValue;
     }
 };
 
