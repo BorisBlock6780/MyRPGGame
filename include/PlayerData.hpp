@@ -1,4 +1,4 @@
-#pragma once
+п»ї#pragma once
 #include "Database.hpp"
 #include <memory>
 #include <vector>
@@ -7,47 +7,72 @@
 #include <iostream>
 
 struct ItemStack {
-    std::string itemId; // Ссылка на ID из GameDatabase ("apple")
-    int count = 0;      // Количество предметов в одной карточке
+    std::string itemId; // РЎСЃС‹Р»РєР° РЅР° ID РёР· GameDatabase ("apple")
+    int count = 0;      // РљРѕР»РёС‡РµСЃС‚РІРѕ РїСЂРµРґРјРµС‚РѕРІ РІ РѕРґРЅРѕР№ РєР°СЂС‚РѕС‡РєРµ
 };
 
 class PlayerInventory {
 private:
-    std::vector<ItemStack> items; // Список стакающихся предметов
+    std::vector<ItemStack> items; // РЎРїРёСЃРѕРє СЃС‚Р°РєР°СЋС‰РёС…СЃСЏ РїСЂРµРґРјРµС‚РѕРІ
+    int balance = 200;
 
 public:
-    // Добавление предмета (Условие: 1 вид предмета = 1 слот)
+    PlayerInventory() = default;
+    explicit PlayerInventory(int startBalance) : balance(std::max(0, startBalance)) {}
+
+    // --- РЈРїСЂР°РІР»РµРЅРёРµ Р±Р°Р»Р°РЅСЃРѕРј СЃСЂРµРґСЃС‚РІ ---
+    int getBalance() const { return balance; }
+
+    void setBalance(int newBalance) {
+        balance = std::max(0, newBalance); // Р—Р°С‰РёС‚Р° РѕС‚ РѕС‚СЂРёС†Р°С‚РµР»СЊРЅРѕРіРѕ Р±Р°Р»Р°РЅСЃР°
+    }
+
+    void addFunds(int amount) {
+        if (amount > 0) {
+            balance += amount;
+        }
+    }
+
+    // РЎРїРёСЃР°РЅРёРµ СЃСЂРµРґСЃС‚РІ: РІРѕР·РІСЂР°С‰Р°РµС‚ false, РµСЃР»Рё РґРµРЅРµРі РЅРµ С…РІР°С‚Р°РµС‚
+    bool spendFunds(int amount) {
+        if (amount < 0 || balance < amount) {
+            return false; // Р‘Р°Р»Р°РЅСЃ РЅРµ РјРѕР¶РµС‚ СѓР№С‚Рё РІ РјРёРЅСѓСЃ!
+        }
+        balance -= amount;
+        return true;
+    }
+    // Р”РѕР±Р°РІР»РµРЅРёРµ РїСЂРµРґРјРµС‚Р° (РЈСЃР»РѕРІРёРµ: 1 РІРёРґ РїСЂРµРґРјРµС‚Р° = 1 СЃР»РѕС‚)
     void addItem(const std::string& itemId, int amount = 1) {
-        // 1. Ищем, есть ли уже такой предмет в инвентаре
+        // 1. РС‰РµРј, РµСЃС‚СЊ Р»Рё СѓР¶Рµ С‚Р°РєРѕР№ РїСЂРµРґРјРµС‚ РІ РёРЅРІРµРЅС‚Р°СЂРµ
         for (auto& stack : items) {
             if (stack.itemId == itemId) {
-                stack.count += amount; // Просто увеличиваем счётчик!
+                stack.count += amount; // РџСЂРѕСЃС‚Рѕ СѓРІРµР»РёС‡РёРІР°РµРј СЃС‡С‘С‚С‡РёРє!
                 return;
             }
         }
 
-        // 2. Если такого предмета ещё нет, создаём для него 1 единственный новый слот
+        // 2. Р•СЃР»Рё С‚Р°РєРѕРіРѕ РїСЂРµРґРјРµС‚Р° РµС‰С‘ РЅРµС‚, СЃРѕР·РґР°С‘Рј РґР»СЏ РЅРµРіРѕ 1 РµРґРёРЅСЃС‚РІРµРЅРЅС‹Р№ РЅРѕРІС‹Р№ СЃР»РѕС‚
         items.push_back({ itemId, amount });
     }
 
-    // Удаление/Расходование предмета (например, съели яблоко)
+    // РЈРґР°Р»РµРЅРёРµ/Р Р°СЃС…РѕРґРѕРІР°РЅРёРµ РїСЂРµРґРјРµС‚Р° (РЅР°РїСЂРёРјРµСЂ, СЃСЉРµР»Рё СЏР±Р»РѕРєРѕ)
     bool removeItem(const std::string& itemId, int amount = 1) {
         for (auto it = items.begin(); it != items.end(); ++it) {
             if (it->itemId == itemId) {
                 if (it->count >= amount) {
                     it->count -= amount;
                     if (it->count <= 0) {
-                        items.erase(it); // Если израсходовали всё — удаляем слот
+                        items.erase(it); // Р•СЃР»Рё РёР·СЂР°СЃС…РѕРґРѕРІР°Р»Рё РІСЃС‘ вЂ” СѓРґР°Р»СЏРµРј СЃР»РѕС‚
                     }
                     return true;
                 }
-                return false; // Недостаточно количества
+                return false; // РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РєРѕР»РёС‡РµСЃС‚РІР°
             }
         }
         return false;
     }
 
-    // Получить предметы ТОЛЬКО определенной категории (для фильтрации по вкладкам UI)
+    // РџРѕР»СѓС‡РёС‚СЊ РїСЂРµРґРјРµС‚С‹ РўРћР›Р¬РљРћ РѕРїСЂРµРґРµР»РµРЅРЅРѕР№ РєР°С‚РµРіРѕСЂРёРё (РґР»СЏ С„РёР»СЊС‚СЂР°С†РёРё РїРѕ РІРєР»Р°РґРєР°Рј UI)
     std::vector<ItemStack> getItemsByCategory(ItemCategory category) const {
         std::vector<ItemStack> filtered;
         const auto& db = GameDatabase::getInstance().items;
@@ -68,17 +93,20 @@ private:
     int level = 1;
     int currentExp = 0;
 
-    // Новая переменная для хранения текущих стаков скиллов в бою
+    // РќРѕРІР°СЏ РїРµСЂРµРјРµРЅРЅР°СЏ РґР»СЏ С…СЂР°РЅРµРЅРёСЏ С‚РµРєСѓС‰РёС… СЃС‚Р°РєРѕРІ СЃРєРёР»Р»РѕРІ РІ Р±РѕСЋ
     int skillStacks = 0;
 
 public:
     PlayerCharacter(std::string id, int lvl = 1) : templateId(std::move(id)), level(lvl) {}
 
-    // Управление стаками
+    // РЈРїСЂР°РІР»РµРЅРёРµ СЃС‚Р°РєР°РјРё
     void addSkillStack(int amount = 1) { skillStacks += amount; }
     void resetSkillStacks() { skillStacks = 0; }
     int getSkillStacks() const { return skillStacks; }
-
+    int getLevel() const { return level; }
+    std::string getName() const {
+        return GameDatabase::getInstance().characters.at(templateId)->getName();
+    }
     StatArray getTotalStats() const {
         const auto& tmpl = GameDatabase::getInstance().characters.at(templateId);
         StatArray total = tmpl->getBaseStats();
@@ -90,7 +118,7 @@ public:
         return total;
     }
 
-    // Пример вызова навыка с учетом стаков
+    // РџСЂРёРјРµСЂ РІС‹Р·РѕРІР° РЅР°РІС‹РєР° СЃ СѓС‡РµС‚РѕРј СЃС‚Р°РєРѕРІ
     double useSkill(size_t skillIndex) {
         const auto& tmpl = GameDatabase::getInstance().characters.at(templateId);
         const auto& skills = tmpl->getSkills();
@@ -99,7 +127,7 @@ public:
 
         StatArray currentStats = getTotalStats();
 
-        // Передаем текущие стаки в полиморфный метод расчета урона
+        // РџРµСЂРµРґР°РµРј С‚РµРєСѓС‰РёРµ СЃС‚Р°РєРё РІ РїРѕР»РёРјРѕСЂС„РЅС‹Р№ РјРµС‚РѕРґ СЂР°СЃС‡РµС‚Р° СѓСЂРѕРЅР°
         double outputValue = skills[skillIndex]->calculateValue(currentStats, skillStacks);
 
         return outputValue;
@@ -108,20 +136,20 @@ public:
 
 class PlayerProfile {
 private:
-    // 1. Все разблокированные персонажи игрока
+    // 1. Р’СЃРµ СЂР°Р·Р±Р»РѕРєРёСЂРѕРІР°РЅРЅС‹Рµ РїРµСЂСЃРѕРЅР°Р¶Рё РёРіСЂРѕРєР°
     std::vector<std::shared_ptr<PlayerCharacter>> reserveCharacters; 
 
-        // 2. Активный отряд (максимум 3 слота)
-        // Использование shared_ptr позволяет слоту указывать на тот же объект, что лежит в резерве
+        // 2. РђРєС‚РёРІРЅС‹Р№ РѕС‚СЂСЏРґ (РјР°РєСЃРёРјСѓРј 3 СЃР»РѕС‚Р°)
+        // РСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ shared_ptr РїРѕР·РІРѕР»СЏРµС‚ СЃР»РѕС‚Сѓ СѓРєР°Р·С‹РІР°С‚СЊ РЅР° С‚РѕС‚ Р¶Рµ РѕР±СЉРµРєС‚, С‡С‚Рѕ Р»РµР¶РёС‚ РІ СЂРµР·РµСЂРІРµ
         std::array<std::shared_ptr<PlayerCharacter>, 3> activeSquad = { nullptr, nullptr, nullptr };
-
+        
 public:
-    // Получение нового персонажа — он сразу отправляется в резерв (режим ожидания)
+    // РџРѕР»СѓС‡РµРЅРёРµ РЅРѕРІРѕРіРѕ РїРµСЂСЃРѕРЅР°Р¶Р° вЂ” РѕРЅ СЃСЂР°Р·Сѓ РѕС‚РїСЂР°РІР»СЏРµС‚СЃСЏ РІ СЂРµР·РµСЂРІ (СЂРµР¶РёРј РѕР¶РёРґР°РЅРёСЏ)
     void obtainCharacter(const std::string& templateId) {
         auto newChar = std::make_shared<PlayerCharacter>(templateId);
         reserveCharacters.push_back(newChar); 
 
-            // Автоматически ставим в свободный слот отряда, если отряд пуст
+            // РђРІС‚РѕРјР°С‚РёС‡РµСЃРєРё СЃС‚Р°РІРёРј РІ СЃРІРѕР±РѕРґРЅС‹Р№ СЃР»РѕС‚ РѕС‚СЂСЏРґР°, РµСЃР»Рё РѕС‚СЂСЏРґ РїСѓСЃС‚
             for (auto& slot : activeSquad) {
                 if (slot == nullptr) {
                     slot = newChar;
@@ -129,8 +157,12 @@ public:
                 }
             }
     }
-
-    // Поставить персонажа из резерва в конкретный слот отряда (0, 1 или 2)
+    void setSquadSlotDirectly(size_t slotIndex, std::shared_ptr<PlayerCharacter> character) {
+        if (slotIndex < 3) {
+            activeSquad[slotIndex] = character;
+        }
+    }
+    // РџРѕСЃС‚Р°РІРёС‚СЊ РїРµСЂСЃРѕРЅР°Р¶Р° РёР· СЂРµР·РµСЂРІР° РІ РєРѕРЅРєСЂРµС‚РЅС‹Р№ СЃР»РѕС‚ РѕС‚СЂСЏРґР° (0, 1 РёР»Рё 2)
     bool setSquadSlot(size_t slotIndex, size_t reserveIndex) {
         if (slotIndex >= 3 || reserveIndex >= reserveCharacters.size()) {
             return false;
@@ -138,7 +170,7 @@ public:
 
         auto targetChar = reserveCharacters[reserveIndex];
 
-        // Убираем этого персонажа из других слотов, если он уже был в отряде (чтобы не было дубликатов)
+        // РЈР±РёСЂР°РµРј СЌС‚РѕРіРѕ РїРµСЂСЃРѕРЅР°Р¶Р° РёР· РґСЂСѓРіРёС… СЃР»РѕС‚РѕРІ, РµСЃР»Рё РѕРЅ СѓР¶Рµ Р±С‹Р» РІ РѕС‚СЂСЏРґРµ (С‡С‚РѕР±С‹ РЅРµ Р±С‹Р»Рѕ РґСѓР±Р»РёРєР°С‚РѕРІ)
         for (auto& slot : activeSquad) {
             if (slot == targetChar) {
                 slot = nullptr;
@@ -149,14 +181,14 @@ public:
         return true;
     }
 
-    // Убрать персонажа из слота отряда
+    // РЈР±СЂР°С‚СЊ РїРµСЂСЃРѕРЅР°Р¶Р° РёР· СЃР»РѕС‚Р° РѕС‚СЂСЏРґР°
     void removeFromSquad(size_t slotIndex) {
         if (slotIndex < 3) {
             activeSquad[slotIndex] = nullptr;
         }
     }
 
-    // Геттеры для UI
+    // Р“РµС‚С‚РµСЂС‹ РґР»СЏ UI
     const std::array<std::shared_ptr<PlayerCharacter>, 3>& getActiveSquad() const {
         return activeSquad;
     }
@@ -165,4 +197,8 @@ public:
         return reserveCharacters;
     }
 };
+
+
+
+
 

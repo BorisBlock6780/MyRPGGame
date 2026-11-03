@@ -1,4 +1,5 @@
-﻿#include <SFML/Graphics.hpp>
+﻿#pragma execution_character_set("utf-8")
+#include <SFML/Graphics.hpp>
 #include <iostream>
 #include <imgui.h>
 #include <imgui-SFML.h>
@@ -13,8 +14,8 @@ int main() {
     }
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear(); // Очищаем дефолтные шрифты
-
-    ImFont* font = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\arial.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesCyrillic());
+    ImFont* defaultFont = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\arial.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesCyrillic());
+    ImFont* menuFont = io.Fonts->AddFontFromFileTTF("assets/fonts/MainMenu.ttf", 48.0f, nullptr, io.Fonts->GetGlyphRangesCyrillic());
     if (!ImGui::SFML::UpdateFontTexture()) {
         std::cerr << "Не удалось обновить текстуру шрифта ImGui!" << std::endl;
     }

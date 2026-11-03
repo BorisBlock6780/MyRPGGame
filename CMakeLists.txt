@@ -24,9 +24,6 @@ if(NOT TARGET SFML::System)
     add_library(SFML::System ALIAS sfml-system)
 endif()
 
-if (MSVC)
-    add_compile_options(/utf-8)
-endif()
 
 # 3. Настройки для ImGui
 set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/imgui-sfml/imgui")
