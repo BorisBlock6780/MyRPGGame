@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "Database.hpp"
 #include <memory>
 #include <vector>
@@ -41,8 +41,11 @@ public:
         balance -= amount;
         return true;
     }
+
     // Добавление предмета (Условие: 1 вид предмета = 1 слот)
     void addItem(const std::string& itemId, int amount = 1) {
+        if (amount <= 0) return;
+
         // 1. Ищем, есть ли уже такой предмет в инвентаре
         for (auto& stack : items) {
             if (stack.itemId == itemId) {
@@ -57,6 +60,8 @@ public:
 
     // Удаление/Расходование предмета (например, съели яблоко)
     bool removeItem(const std::string& itemId, int amount = 1) {
+        if (amount <= 0) return false;
+
         for (auto it = items.begin(); it != items.end(); ++it) {
             if (it->itemId == itemId) {
                 if (it->count >= amount) {
@@ -70,6 +75,16 @@ public:
             }
         }
         return false;
+    }
+
+    // Получить количество конкретного предмета в инвентаре
+    int getItemCount(const std::string& itemId) const {
+        for (const auto& stack : items) {
+            if (stack.itemId == itemId) {
+                return stack.count;
+            }
+        }
+        return 0;
     }
 
     // Получить предметы ТОЛЬКО определенной категории (для фильтрации по вкладкам UI)
@@ -98,6 +113,8 @@ private:
 
 public:
     PlayerCharacter(std::string id, int lvl = 1) : templateId(std::move(id)), level(lvl) {}
+
+    const std::string& getId() const { return templateId; }
 
     // Управление стаками
     void addSkillStack(int amount = 1) { skillStacks += amount; }
@@ -139,9 +156,9 @@ private:
     // 1. Все разблокированные персонажи игрока
     std::vector<std::shared_ptr<PlayerCharacter>> reserveCharacters; 
 
-        // 2. Активный отряд (максимум 3 слота)
-        // Использование shared_ptr позволяет слоту указывать на тот же объект, что лежит в резерве
-        std::array<std::shared_ptr<PlayerCharacter>, 3> activeSquad = { nullptr, nullptr, nullptr };
+    // 2. Активный отряд (максимум 3 слота)
+    // Использование shared_ptr позволяет слоту указывать на тот же объект, что лежит в резерве
+    std::array<std::shared_ptr<PlayerCharacter>, 3> activeSquad = { nullptr, nullptr, nullptr };
         
 public:
     // Получение нового персонажа — он сразу отправляется в резерв (режим ожидания)
@@ -149,19 +166,58 @@ public:
         auto newChar = std::make_shared<PlayerCharacter>(templateId);
         reserveCharacters.push_back(newChar); 
 
-            // Автоматически ставим в свободный слот отряда, если отряд пуст
-            for (auto& slot : activeSquad) {
-                if (slot == nullptr) {
-                    slot = newChar;
-                    break;
-                }
+        // Автоматически ставим в свободный слот отряда, если отряд пуст
+        for (auto& slot : activeSquad) {
+            if (slot == nullptr) {
+                slot = newChar;
+                break;
             }
+        }
     }
+
+    // Проверка, есть ли уже персонаж с таким ID
+    bool hasCharacter(const std::string& templateId) const {
+        for (const auto& ch : reserveCharacters) {
+            if (ch && ch->getId() == templateId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Удаление персонажа из профиля (и из активного отряда)
+    bool removeCharacter(const std::string& templateId) {
+        auto it = std::find_if(reserveCharacters.begin(), reserveCharacters.end(),
+            [&templateId](const std::shared_ptr<PlayerCharacter>& ch) {
+                return ch && ch->getId() == templateId;
+            });
+        if (it == reserveCharacters.end()) {
+            return false;
+        }
+
+        auto targetChar = *it;
+
+        // Убираем из активного отряда
+        for (auto& slot : activeSquad) {
+            if (slot == targetChar) {
+                slot = nullptr;
+            }
+        }
+
+        reserveCharacters.erase(it);
+        return true;
+    }
+
+    size_t getCharacterCount() const {
+        return reserveCharacters.size();
+    }
+
     void setSquadSlotDirectly(size_t slotIndex, std::shared_ptr<PlayerCharacter> character) {
         if (slotIndex < 3) {
             activeSquad[slotIndex] = character;
         }
     }
+
     // Поставить персонажа из резерва в конкретный слот отряда (0, 1 или 2)
     bool setSquadSlot(size_t slotIndex, size_t reserveIndex) {
         if (slotIndex >= 3 || reserveIndex >= reserveCharacters.size()) {
@@ -197,8 +253,3 @@ public:
         return reserveCharacters;
     }
 };
-
-
-
-
-

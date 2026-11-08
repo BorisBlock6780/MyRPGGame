@@ -46,6 +46,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${IMGUI_DIR}
 )
 
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /utf-8)
+endif()
+
 # 6. Линковка
 target_link_libraries(${PROJECT_NAME} PRIVATE 
     sfml-graphics 

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <string>
 #include <vector>
 #include <imgui.h>
@@ -8,7 +8,6 @@
 enum class MapNodeType {
     Shop,        // Торговец -> Экран торговли (ScreenState::Shop)
     Combat,      // Сражение -> Экран боя (ScreenState::Combat)
-    Environment, // Добыча / Событие -> Экран окружения (ScreenState::EnvironmentInteraction)
     Cooking,     // Полевой костер -> Экран готовки (ScreenState::Cooking)
     Crafting     // Полевая мастерская -> Экран создания (ScreenState::Crafting)
 };
