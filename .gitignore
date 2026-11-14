@@ -30,3 +30,6 @@ out/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
+# --- .NET build folders ---
+bin/
+obj/
