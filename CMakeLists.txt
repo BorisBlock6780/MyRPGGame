@@ -32,14 +32,14 @@ set(IMGUI_SFML_FIND_SFML OFF CACHE BOOL "" FORCE)
 # 4. Подключаем imgui-sfml
 add_subdirectory(external/imgui-sfml)
 
-# 5. Исходный код проекта
-file(GLOB_RECURSE SOURCES "src/*.cpp")
-file(GLOB_RECURSE HEADERS "include/*.hpp")
-
+# 5. Основная игра с GUI (SFML + ImGui)
 add_executable(MyRPGGame 
     src/main.cpp 
     src/ScreenManager.cpp
+    src/Lab3Demo.cpp
 )
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE COMBINED_BUILD)
 
 target_include_directories(${PROJECT_NAME} PRIVATE 
     include 
@@ -50,10 +50,23 @@ if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /utf-8)
 endif()
 
-# 6. Линковка
+# 6. Линковка основной игры
 target_link_libraries(${PROJECT_NAME} PRIVATE 
     sfml-graphics 
     sfml-window 
     sfml-system 
     ImGui-SFML::ImGui-SFML
 )
+
+# 7. Консольная программа демонстрации Лабораторной работы 3 (Часть 2: Умные указатели)
+add_executable(Lab3Demo 
+    src/Lab3Demo.cpp
+)
+
+target_include_directories(Lab3Demo PRIVATE 
+    include
+)
+
+if(MSVC)
+    target_compile_options(Lab3Demo PRIVATE /utf-8)
+endif()

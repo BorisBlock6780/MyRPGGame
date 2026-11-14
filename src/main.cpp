@@ -4,8 +4,14 @@
 #include <imgui.h>
 #include <imgui-SFML.h>
 #include "ScreenManager.hpp"
+#include "Lab3Demo.hpp"
 
-int main() {
+int main(int argc, char* argv[]) {
+    // Поддержка запуска консольной демонстрации Лабораторной работы 3
+    if (argc > 1 && (std::string(argv[1]) == "--lab3" || std::string(argv[1]) == "--demo")) {
+        Lab3::runLab3Demo();
+        return 0;
+    }
     sf::VideoMode desktopMode = sf::VideoMode::getDesktopMode();
     sf::RenderWindow window(desktopMode, "RPG Game System", sf::Style::Fullscreen);
     window.setFramerateLimit(60);
