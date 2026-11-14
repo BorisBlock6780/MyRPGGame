@@ -24,7 +24,9 @@ enum class ScreenState {
     Achievements,
     SquadEditor,
     CharacterEditor,
-    Combat
+    Combat,
+    Mining,
+    Quests
 };
 
 enum class WindowMode {
@@ -324,8 +326,94 @@ private:
     void renderCombat();
     void renderCooking();
     void renderCrafting();
+    void renderMining();
+    void renderQuests();
     void advanceDialogue(int nextIndex); // Переход к следующей фразе или закрытие
     void renderDialogue();
+
+    // --- СИСТЕМА ДОСТИЖЕНИЙ (ГЛОБАЛЬНЫЕ И ПРОФИЛЬНЫЕ) ---
+    struct GameAchievement {
+        std::string id;
+        std::string title;
+        std::string description;
+        std::string icon;
+        bool isGlobal = false;
+        bool isUnlocked = false;
+        std::string unlockedDate = "";
+    };
+    std::vector<GameAchievement> achievements;
+    void initAchievements();
+    void loadGlobalAchievements();
+    void saveGlobalAchievements();
+    bool unlockAchievement(const std::string& idOrTitle);
+    bool lockAchievement(const std::string& idOrTitle);
+    int currentAchievementTab = 0;
+
+    // --- СИСТЕМА КВЕСТОВ И ЗАДАНИЙ ---
+    enum class QuestStatus {
+        InProgress,
+        Completed,
+        Claimed
+    };
+    struct QuestData {
+        std::string id;
+        std::string title;
+        std::string description;
+        std::string category;
+        bool isStory = false; // true = Сюжетный, false = Побочный
+        int currentProgress = 0;
+        int targetProgress = 1;
+        std::string progressLabel;
+        int rewardGold = 0;
+        int rewardExp = 0;
+        std::string rewardItemId = "";
+        int rewardItemCount = 0;
+        QuestStatus status = QuestStatus::InProgress;
+    };
+    std::vector<QuestData> quests;
+    void initQuests();
+    void updateQuestsProgress();
+    int currentQuestFilterTab = 0; // 0 = Все, 1 = Сюжетные, 2 = Побочные
+    std::string selectedQuestId = "quest_reach_floor3";
+
+    // --- ИНТЕРАКТИВНАЯ ДОБЫЧА РУДЫ ---
+    float miningTimer = 0.0f;
+    int miningAttemptsLeft = 5;
+    int miningTotalYield = 0;
+    std::string miningFeedbackMsg;
+    ImVec4 miningFeedbackColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+    int currentMiningFloor = 1;
+
+    // --- РЕДАКТОР ПЕРСОНАЖА (ЭКИПИРОВКА И ПОРТРЕТЫ) ---
+    bool requestOpenSlotPicker = false;
+    size_t selectedEditorCharIndex = 0;
+    ArtifactType activeSlotPicker = ArtifactType::None;
+    std::unordered_map<std::string, sf::Texture> characterPortraits;
+    std::unordered_map<std::string, sf::Texture> slotIconTextures;
+    void renderSlotPickerModal(std::shared_ptr<PlayerCharacter> character);
+
+    // --- АНИМИРОВАННЫЕ МОДЕЛИ И ЭФФЕКТЫ АТАК В БОЮ ---
+    struct CombatAnimState {
+        bool isPlaying = false;
+        std::string attackerId;
+        bool isHero = true;
+        size_t heroIndex = 0;
+        size_t targetIndex = 0;
+        size_t skillIndex = 0;
+        float timer = 0.0f;
+        float duration = 0.85f;
+        double damage = 0.0;
+        bool isCrit = false;
+        bool damageApplied = false;
+        std::string skillName;
+    };
+    CombatAnimState combatAnim;
+
+    void renderAnimatedHeroModel(ImDrawList* drawList, const ImVec2& center, const std::string& charId, bool isActive, float animTime, float scale = 1.0f);
+    void renderAnimatedEnemyModel(ImDrawList* drawList, const ImVec2& center, const CombatEnemy& enemy, bool isTarget, float animTime, float scale = 1.0f);
+    void renderCombatBattlefield(float width, float height);
+    void renderCombatVisualEffects(ImDrawList* drawList, const ImVec2& arenaPos, float arenaW, float arenaH);
+
 };
 
 #endif // SCREEN_MANAGER_HPP

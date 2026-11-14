@@ -2,6 +2,10 @@
 #include "ScreenManager.hpp"
 #include "Database.hpp"
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <filesystem>
+#include <unordered_set>
 #include <imgui.h>
 #include <algorithm>
 #include "PlayerData.hpp"
@@ -91,22 +95,22 @@ std::string ScreenManager::getSkillDetailedDescription(const std::shared_ptr<Ski
     std::string full = desc + "\n\n";
 
     if (sIdx == 0) {
-        full += "• Категория: Обычная атака (Готово)\n";
+        full += "- Категория: Обычная атака (Готово)\n";
     } else if (skill->getCooldown() > 0) {
-        full += "• Перезарядка: " + std::to_string(skill->getCooldown()) + " ходов\n";
+        full += "- Перезарядка: " + std::to_string(skill->getCooldown()) + " ходов\n";
     } else {
-        full += "• Перезарядка: Готово к применению\n";
+        full += "- Перезарядка: Готово к применению\n";
     }
 
     if (skill->getStacksGranted() > 0) {
-        full += "• Накапливает: +" + std::to_string(skill->getStacksGranted()) + " стак(ов) при ударе\n";
+        full += "- Накапливает: +" + std::to_string(skill->getStacksGranted()) + " стак(ов) при ударе\n";
     }
     if (skill->getConsumesAllStacks()) {
-        full += "• Расход: поглощает ВСЕ накопленные стаки (текущих: " + std::to_string(hero.skillStacks) + ")\n";
+        full += "- Расход: поглощает ВСЕ накопленные стаки (текущих: " + std::to_string(hero.skillStacks) + ")\n";
     }
 
     double currentVal = skill->calculateValue(hero.stats, hero.skillStacks);
-    full += "• Расчетная боевая сила: ~" + std::to_string(static_cast<int>(currentVal));
+    full += "- Расчетная боевая сила: ~" + std::to_string(static_cast<int>(currentVal));
 
     return full;
 }
@@ -301,10 +305,25 @@ bool ScreenManager::loadResources() {
         }
     }
     nodeIconTextures["shop"].loadFromFile("assets/icons/jewelry.png");
-    nodeIconTextures["combat"].loadFromFile("assets/icons/weapon.png");
+    nodeIconTextures["combat"].loadFromFile("assets/icons/combat.png");
+    nodeIconTextures["combat_elite"].loadFromFile("assets/icons/combat_elite.png");
+    nodeIconTextures["combat_boss"].loadFromFile("assets/icons/combat_boss.png");
     nodeIconTextures["resource"].loadFromFile("assets/icons/materials.png");
     nodeIconTextures["cooking"].loadFromFile("assets/icons/food.png");
     nodeIconTextures["crafting"].loadFromFile("assets/icons/artifact.png");
+    nodeIconTextures["mining"].loadFromFile("assets/icons/mining.png");
+
+    slotIconTextures["slot_weapon"].loadFromFile("assets/icons/slot_weapon.png");
+    slotIconTextures["slot_headgear"].loadFromFile("assets/icons/slot_headgear.png");
+    slotIconTextures["slot_costume"].loadFromFile("assets/icons/slot_costume.png");
+    slotIconTextures["slot_amulet"].loadFromFile("assets/icons/slot_amulet.png");
+    slotIconTextures["slot_ring"].loadFromFile("assets/icons/slot_ring.png");
+
+    for (const auto& [charId, _] : GameDatabase::getInstance().characters) {
+        characterPortraits[charId].loadFromFile("assets/portraits/" + charId + ".png");
+        characterPortraits[charId].setSmooth(true);
+    }
+
     return true;
 
 }
@@ -324,7 +343,13 @@ void ScreenManager::initMapPoints() {
         pt.floor = floor;
         pt.position = pos;
         pt.type = MapNodeType::Combat;
-        pt.iconKey = "combat";
+        if (id.find("boss") != std::string::npos) {
+            pt.iconKey = "combat_boss";
+        } else if (id.find("elite") != std::string::npos) {
+            pt.iconKey = "combat_elite";
+        } else {
+            pt.iconKey = "combat";
+        }
         pt.isTemporary = isTemp;
         pt.enemies = std::move(enemies);
         mapPoints.push_back(pt);
@@ -364,6 +389,20 @@ void ScreenManager::initMapPoints() {
         mapPoints.push_back(pt);
     };
 
+    auto addMining = [&](const std::string& id, const std::string& title, const std::string& desc,
+                         int floor, ImVec2 pos) {
+        MapPointOfInterest pt;
+        pt.id = id;
+        pt.title = title;
+        pt.description = desc;
+        pt.floor = floor;
+        pt.position = pos;
+        pt.type = MapNodeType::ResourceMine;
+        pt.iconKey = "mining";
+        pt.isTemporary = false;
+        mapPoints.push_back(pt);
+    };
+
     // =========================================================================
     // ЭТАЖ 1: ПЕПЕЛЬНЫЙ НЕКРОПОЛЬ
     // =========================================================================
@@ -380,7 +419,13 @@ void ScreenManager::initMapPoints() {
     addCombat("f1_boss_camp", "Логово Колосса", "[БОСС] Арена Костяного Колосса, повелителя некрополя.",
               1, ImVec2(880.0f, 450.0f), {{"f1_boss_bone_colossus", "Костяной Колосс", 5, 1}, {"f1_skeleton_scout", "Скелет-разведчик", 3, 2}});
 
-    // =========================================================================
+
+    addMining("f1_mining_iron", "Железная жила", "Богатая жила железной руды и обломков металла в катакомбах.",
+              1, ImVec2(500.0f, 170.0f));
+    addCombat("f1_combat_patrol", "Дозор нежити", "Отряд бродячих скелетов патрулирует склепы.",
+              1, ImVec2(170.0f, 260.0f), {{"f1_skeleton_scout", "Скелет-разведчик", 2, 3}});
+    addCombat("f1_combat_ghouls", "Логово упырей", "Несколько ненасытных упырей рыщут в поисках свежей плоти.",
+              1, ImVec2(720.0f, 510.0f), {{"f1_decayed_zombie", "Разложившийся зомби", 2, 2}, {"f1_bone_hound", "Костяная гончая", 2, 2}});    // =========================================================================
     // ЭТАЖ 2: ОАЗИС ТИШИНЫ
     // =========================================================================
     addShop("f2_merchant", "Торговец Оазиса", "Провизия и свежие припасы подземного оазиса.",
@@ -397,7 +442,13 @@ void ScreenManager::initMapPoints() {
     addCombat("f2_boss_camp", "Сердце Черного Лотоса", "[БОСС] Гигантский цветок-паразит, оплетший корни башни.",
               2, ImVec2(880.0f, 460.0f), {{"f2_boss_lotus_matriarch", "Матриарх Черного Лотоса", 10, 1}, {"f2_spore_spitter", "Споровик-плевун", 7, 2}});
 
-    // =========================================================================
+
+    addMining("f2_mining_vein", "Заросшая жила", "Кварцевая жила с прожилками мифрила среди корней древних деревьев.",
+              2, ImVec2(240.0f, 210.0f));
+    addCombat("f2_combat_spiders", "Паучья засада", "Гигантские ядовитые пауки спустились с кроны.",
+              2, ImVec2(560.0f, 490.0f), {{"f2_thorn_stalker", "Шипастый ловец", 5, 3}});
+    addCombat("f2_combat_vipers", "Змеиный выводок", "Гнездо болотных гадюк у водопоя.",
+              2, ImVec2(730.0f, 320.0f), {{"f2_oasis_viper", "Болотная гадюка", 5, 3}, {"f2_lake_lurker", "Озерный выползень", 5, 2}});    // =========================================================================
     // ЭТАЖ 3: ЗАТОНУВШИЙ АКРОПОЛЬ
     // =========================================================================
     addShop("f3_merchant", "Лавка Водолаза", "Редкие морепродукты и античные реликвии со дна.",
@@ -413,7 +464,13 @@ void ScreenManager::initMapPoints() {
     addCombat("f3_boss_camp", "Трон Затонувшего Полиса", "[БОСС] Древний Левиафан, владыка затопленного города.",
               3, ImVec2(880.0f, 450.0f), {{"f3_boss_leviathan_lord", "Левиафан Глубин", 15, 1}, {"f3_elite_kraken_spawn", "Отпрыск Кракена", 12, 1}});
 
-    // =========================================================================
+
+    addMining("f3_mining_crystals", "Подводная жила", "Океанические кристаллы и минералы на шельфе.",
+              3, ImVec2(480.0f, 210.0f));
+    addCombat("f3_combat_raiders", "Налетчики глубин", "Группа тритонов с трезубцами перекрыла путь.",
+              3, ImVec2(180.0f, 270.0f), {{"f3_triton_spearman", "Тритон-копейщик", 9, 3}});
+    addCombat("f3_combat_chasm", "Твари расщелины", "Глубоководные угри выплыли на свет факелов.",
+              3, ImVec2(720.0f, 530.0f), {{"f3_chasm_eel", "Угорь бездны", 10, 2}, {"f3_abyssal_jellyfish", "Глубинная медуза", 9, 2}});    // =========================================================================
     // ЭТАЖ 4: РАСКАЛЕННЫЕ МАГИСТРАЛИ
     // =========================================================================
     addShop("f4_merchant", "Дворфийская фактория", "Огнеупорные злаки и дары магматических озер.",
@@ -429,7 +486,13 @@ void ScreenManager::initMapPoints() {
     addCombat("f4_boss_camp", "Жерло Вечного Пламени", "[БОСС] Титан Игнис, рожденный в сердце магматического разлома.",
               4, ImVec2(880.0f, 460.0f), {{"f4_boss_ignis_titan", "Игнис, Пожиратель Лавы", 20, 1}, {"f4_elite_volcanic_drake", "Вулканический драконид", 17, 1}});
 
-    // =========================================================================
+
+    addMining("f4_mining_magma", "Магматическая жила", "Раскаленная жила с огненными кристаллами и рудой.",
+              4, ImVec2(490.0f, 190.0f));
+    addCombat("f4_combat_flame", "Огненная стража", "Духи пламени кружат вокруг жерла.",
+              4, ImVec2(210.0f, 260.0f), {{"f4_magma_imp", "Магматический бес", 13, 3}, {"f4_flame_hound", "Пламенная гончая", 14, 2}});
+    addCombat("f4_combat_duergar", "Аванпост дуэргаров", "Патруль темных кузнецов охраняет подходы к плавильням.",
+              4, ImVec2(710.0f, 490.0f), {{"f4_duergar_berserker", "Дуэргар-берсерк", 14, 3}});    // =========================================================================
     // ЭТАЖ 5: ЖЕЛЕЗНЫЙ КАРАНТИН
     // =========================================================================
     addShop("f5_merchant", "Пункт Снабжения", "Синтетическая белковая масса и медикаменты.",
@@ -445,7 +508,13 @@ void ScreenManager::initMapPoints() {
     addCombat("f5_boss_camp", "Изолятор Объекта Ноль", "[БОСС] Объект Ноль — совершенный генетический хищник.",
               5, ImVec2(880.0f, 450.0f), {{"f5_boss_subject_zero", "Объект Ноль", 25, 1}, {"f5_elite_amalgam_beast", "Биомеханический амальгам", 22, 1}});
 
-    // =========================================================================
+
+    addMining("f5_mining_scrap", "Свалка сплавов", "Залежи редких металлических сплавов и мифрила среди обломков механизмов.",
+              5, ImVec2(470.0f, 200.0f));
+    addCombat("f5_combat_drones", "Рой дронов", "Автономные хирургические дроны перешли в режим охоты.",
+              5, ImVec2(200.0f, 260.0f), {{"f5_surgical_drone", "Хирургический дрон", 17, 3}, {"f5_toxic_crawler", "Токсичный ползун", 17, 2}});
+    addCombat("f5_combat_hounds", "Кибер-гончие", "Усиленные псы рыщут по коридорам комплекса.",
+              5, ImVec2(710.0f, 520.0f), {{"f5_cyber_hound", "Кибер-гончая", 18, 3}});    // =========================================================================
     // ЭТАЖ 6: ИЗУМРУДНЫЙ СВОД
     // =========================================================================
     addShop("f6_merchant", "Хижина Шамана", "Экзотические плоды гигантских джунглей и редкий нектар.",
@@ -461,7 +530,13 @@ void ScreenManager::initMapPoints() {
     addCombat("f6_boss_camp", "Сердце Изумрудного Свода", "[БОСС] Исполинский бронированный ящер размером с холм.",
               6, ImVec2(880.0f, 460.0f), {{"f6_boss_emerald_behemoth", "Изумрудный Бегемот", 30, 1}, {"f6_elite_ancient_treant", "Древний энт джунглей", 27, 1}});
 
-    // =========================================================================
+
+    addMining("f6_mining_jungle", "Алмазная жила", "Ископаемые кристаллы среди корней древних исполинов.",
+              6, ImVec2(510.0f, 200.0f));
+    addCombat("f6_combat_raptors", "Стая хищников", "Быстрые джунглевые рапторы окружили тропу.",
+              6, ImVec2(190.0f, 270.0f), {{"f6_jungle_raptor", "Джунглевый раптор", 22, 3}});
+    addCombat("f6_combat_hornets", "Гнездо шершней", "Рой ядовитых гигантских шершней в ветвях.",
+              6, ImVec2(720.0f, 500.0f), {{"f6_toxic_hornet", "Токсичный шершень", 21, 4}});    // =========================================================================
     // ЭТАЖ 7: ЗАСТЫВШЕЕ ВРЕМЯ
     // =========================================================================
     addShop("f7_merchant", "Хроно-лавка", "Морозные деликатесы и кристаллы застывшего времени.",
@@ -477,7 +552,13 @@ void ScreenManager::initMapPoints() {
     addCombat("f7_boss_camp", "Маятник Судеб", "[БОСС] Хранитель песочных часов башни, скованный вечным льдом.",
               7, ImVec2(880.0f, 450.0f), {{"f7_boss_chronos_the_frozen", "Кронос Застывший", 35, 1}, {"f7_elite_frost_archmage", "Морозный архимаг", 32, 1}});
 
-    // =========================================================================
+
+    addMining("f7_mining_ice", "Ледяная жила", "Мифриловые самородки, вмороженные в вековой лед.",
+              7, ImVec2(490.0f, 210.0f));
+    addCombat("f7_combat_wolves", "Стая метели", "Свирепые снежные волки преграждают перевал.",
+              7, ImVec2(190.0f, 280.0f), {{"f7_blizzard_wolf", "Снежный волк", 26, 3}});
+    addCombat("f7_combat_golems", "Кристальные големы", "Стражи ледника восстают из толщи снега.",
+              7, ImVec2(710.0f, 510.0f), {{"f7_crystal_golem", "Кристальный голем", 27, 2}, {"f7_frozen_remnant", "Ледяной остаток", 26, 2}});    // =========================================================================
     // ЭТАЖ 8: ИЛЛЮЗОРНЫЙ МЕГАПОЛИС
     // =========================================================================
     addShop("f8_merchant", "Неоновый дилер", "Синтетическая еда, неоновые концентраты и плазменные батареи.",
@@ -493,7 +574,13 @@ void ScreenManager::initMapPoints() {
     addCombat("f8_boss_camp", "Ядро Сети Нексус", "[БОСС] Центральный ИИ башни, материализовавший цифровое тело божества.",
               8, ImVec2(880.0f, 460.0f), {{"f8_boss_overseer_ai", "Архитектор «Нексус»", 40, 1}, {"f8_elite_matrix_assassin", "Ассасин Матрицы", 37, 1}});
 
-    // =========================================================================
+
+    addMining("f8_mining_shadow", "Теневая жила", "Жила с осколками пустоты и редкими металлами в переулках мегаполиса.",
+              8, ImVec2(490.0f, 220.0f));
+    addCombat("f8_combat_androids", "Патруль синдиката", "Тяжеловооруженные андроиды зачищают сектор.",
+              8, ImVec2(190.0f, 270.0f), {{"f8_enforcer_android", "Андроид-каратель", 31, 3}});
+    addCombat("f8_combat_glitch", "Глитч-фантомы", "Искаженные цифровые фантомы мерцают в неоновом тумане.",
+              8, ImVec2(720.0f, 510.0f), {{"f8_holo_phantom", "Голо-фантом", 31, 2}, {"f8_glitch_hound", "Глитч-гончая", 31, 2}});    // =========================================================================
     // ЭТАЖ 9: НЕБЕСНЫЙ СОБОР
     // =========================================================================
     addShop("f9_merchant", "Монастырская лавка", "Священная провизия, золотая пшеница и небесный нектар.",
@@ -509,7 +596,13 @@ void ScreenManager::initMapPoints() {
     addCombat("f9_boss_camp", "Престол Небес", "[БОСС] Архонт Люминарис — шестикрылый патриарх Небесного Собора.",
               9, ImVec2(880.0f, 450.0f), {{"f9_boss_archon_luminaris", "Архонт Люминарис", 45, 1}, {"f9_elite_archangel_avenger", "Мстительный архангел", 42, 1}});
 
-    // =========================================================================
+
+    addMining("f9_mining_void", "Жила разлома", "Чистейшие осколки пустоты и небесные металлы у Престола Света.",
+              9, ImVec2(500.0f, 210.0f));
+    addCombat("f9_combat_seraphs", "Карающий авангард", "Серафимы-часовые преграждают путь грешникам.",
+              9, ImVec2(200.0f, 270.0f), {{"f9_seraph_sentinel", "Серафим-часовой", 36, 3}});
+    addCombat("f9_combat_zealots", "Круг фанатиков", "Ревностные последователи света отражают вторжение.",
+              9, ImVec2(720.0f, 500.0f), {{"f9_radiant_zealot", "Лучезарный фанатик", 36, 3}});    // =========================================================================
     // ЭТАЖ 10: СЕРДЦЕ БАШНИ (ТРОН ПЕРВОРОДНОГО)
     // =========================================================================
     addUtility("f10_crafting", "Алтарь Сингулярности", "Кузница на грани ткани реальности.", 10, ImVec2(220.0f, 440.0f), MapNodeType::Crafting, "crafting");
@@ -522,7 +615,13 @@ void ScreenManager::initMapPoints() {
               10, ImVec2(450.0f, 520.0f), {{"f10_elite_abyss_monarch", "Монарх Бездны", 48, 1}, {"f10_chaos_spawn", "Порождение Хаоса", 45, 2}});
     addCombat("f10_boss_camp", "Трон Первородного", "[БОСС] Создатель Башни, повелевающий законами мироздания.",
               10, ImVec2(880.0f, 450.0f), {{"f10_boss_primordial_origin", "Первородный Создатель", 50, 1}, {"f10_elite_primordial_warden", "Первородный Страж Трона", 47, 1}});
-}
+
+    addMining("f10_mining_celestial", "Небесная жила", "Небесные слитки и самородки божественной руды в ядре мироздания.",
+              10, ImVec2(490.0f, 210.0f));
+    addCombat("f10_combat_wisps", "Сгустки сингулярности", "Странствующие искры первородной сингулярности искажают пространство.",
+              10, ImVec2(200.0f, 270.0f), {{"f10_singularity_wisp", "Искра сингулярности", 42, 3}});
+    addCombat("f10_combat_knights", "Рыцари забвения", "Элитная стража бездны не пропускает никого к истоку.",
+              10, ImVec2(710.0f, 510.0f), {{"f10_oblivion_knight", "Рыцарь забвения", 43, 2}, {"f10_void_walker", "Странник пустоты", 42, 2}});}
 
 void ScreenManager::renderBackground(sf::RenderWindow& window) {
     sf::Vector2u winSize = window.getSize();
@@ -578,23 +677,26 @@ void ScreenManager::renderBackground(sf::RenderWindow& window) {
 }
 
 ScreenManager::ScreenManager() {
-    // Инициализация базовой базы данных при создании менеджера
+    // Инициализация базы данных и точек карты
     GameDatabase::getInstance().init();
     initMapPoints();
 
-    // Начальные персонажи отряда (если еще не добавлены)
+    // Начальный состав отряда
     if (playerProfile.getCharacterCount() == 0) {
         playerProfile.obtainCharacter("adeir");
         playerProfile.obtainCharacter("renwick");
         playerProfile.obtainCharacter("garosh");
     }
 
-    // Приветственные сообщения в консоли
-    logConsole("[Система] Консоль разработчика активна. Нажмите ~ чтобы скрыть/показать.", ImVec4(0.4f, 0.85f, 1.0f, 1.0f));
-    logConsole("[Система] Введите 'help' для просмотра списка доступных команд.", ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+    initAchievements();
+    loadGlobalAchievements();
+    initQuests();
+
+    logConsole("[Система] Добро пожаловать в игру! Нажмите ~ для консоли.", ImVec4(0.4f, 0.85f, 1.0f, 1.0f));
+    logConsole("[Система] Введите 'help' для списка доступных команд.", ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
 }
 
-// Обработка переключения консоли по клавише ~ (Tilde)
+// Перехват клавиши ~ (Tilde)
 void ScreenManager::processEvent(const sf::Event& event) {
     // 1. Режим переназначения клавиши в настройках
     if (remappingActionIndex >= 0 && event.type == sf::Event::KeyPressed) {
@@ -875,6 +977,8 @@ void ScreenManager::renderCurrentScreen() {
     case ScreenState::Combat: renderCombat(); break;
     case ScreenState::Crafting: renderCrafting(); break;
     case ScreenState::Cooking: renderCooking(); break;
+    case ScreenState::Mining: renderMining(); break;
+    case ScreenState::Quests: renderQuests(); break;
     }
 
     if (isDialogueOpen) {
@@ -956,18 +1060,56 @@ void ScreenManager::executeConsoleCommand(const std::string& rawLine) {
 
     // Команда: help
     if (cmd == "help" || cmd == "помощь" || cmd == "?") {
-        logConsole("=== СПРАВКА ПО КОМАНДАМ КОНСОЛИ ===", ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
-        logConsole("1. Выдача: give <категория> <id> [количество]", ImVec4(0.4f, 0.9f, 1.0f, 1.0f));
-        logConsole("   Примеры: give character vex", ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
-        logConsole("   Специально: give all [количество] — выдать всех персонажей и предметы игры", ImVec4(1.0f, 0.85f, 0.25f, 1.0f));
-        logConsole("            give food cave_wheat 5", ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
-        logConsole("            give weapon rusty_blade 1", ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
-        logConsole("2. Удаление: remove <категория> <id> [количество]", ImVec4(0.4f, 0.9f, 1.0f, 1.0f));
-        logConsole("   Примеры: remove character adeir", ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
-        logConsole("            remove food cave_wheat 2", ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
-        logConsole("3. Категории предметов: food, weapon, material, artifact, jewelry, quest", ImVec4(0.9f, 0.8f, 0.5f, 1.0f));
-        logConsole("   Категория персонажей: character (или char, персонаж)", ImVec4(0.9f, 0.8f, 0.5f, 1.0f));
-        logConsole("4. Очистка: clear (очистить историю лога)", ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
+        logConsole("=== СПИСОК ДОСТУПНЫХ КОМАНД ===", ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
+        logConsole("1. Выдача предметов/героев: give <тип> <id> [кол-во]", ImVec4(0.4f, 0.9f, 1.0f, 1.0f));
+        logConsole("   give all [кол-во] — выдать всех героев и все предметы", ImVec4(1.0f, 0.85f, 0.25f, 1.0f));
+        logConsole("2. Удаление предметов/героев: remove <тип> <id> [кол-во]", ImVec4(0.4f, 0.9f, 1.0f, 1.0f));
+        logConsole("3. Достижения: achievement <добавить|удалить> <имя_или_id>", ImVec4(0.95f, 0.80f, 0.35f, 1.0f));
+        logConsole("   Пример: achievement добавить global_floor_5", ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
+        logConsole("           достижение удалить Первые шаги", ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
+        logConsole("4. Очистка: clear (очистить историю)", ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
+        return;
+    }
+
+    // Команда: achievement / ach / достижение
+    if (cmd == "achievement" || cmd == "ach" || cmd == "достижение") {
+        if (tokens.size() < 3) {
+            logConsole("Ошибка: недостаточно параметров команды!", ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+            logConsole("Синтаксис: achievement <добавить|удалить> <имя_или_id_достижения>", ImVec4(1.0f, 0.85f, 0.35f, 1.0f));
+            logConsole("Примеры:", ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+            logConsole("  achievement добавить global_floor_5", ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
+            logConsole("  достижение удалить Первые шаги", ImVec4(0.85f, 0.85f, 0.85f, 1.0f));
+            return;
+        }
+
+        std::string action = toLowerCmdStr(tokens[1]);
+        bool isAdd = (action == "add" || action == "give" || action == "добавить" || action == "выдать");
+        bool isRemove = (action == "remove" || action == "del" || action == "delete" || action == "удалить" || action == "забрать");
+
+        if (!isAdd && !isRemove) {
+            logConsole("Неизвестное действие: '" + tokens[1] + "'. Допустимо: добавить / удалить (add / remove).", ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+            return;
+        }
+
+        std::string target;
+        for (size_t t = 2; t < tokens.size(); ++t) {
+            if (!target.empty()) target += " ";
+            target += tokens[t];
+        }
+
+        if (isAdd) {
+            if (unlockAchievement(target)) {
+                logConsole("[Достижения] Игроку успешно выдано достижение: '" + target + "'!", ImVec4(0.35f, 1.0f, 0.45f, 1.0f));
+            } else {
+                logConsole("[Ошибка] Достижение '" + target + "' не найдено!", ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+            }
+        } else {
+            if (lockAchievement(target)) {
+                logConsole("[Достижения] Достижение '" + target + "' удалено у игрока.", ImVec4(1.0f, 0.85f, 0.35f, 1.0f));
+            } else {
+                logConsole("[Ошибка] Достижение '" + target + "' не найдено!", ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+            }
+        }
         return;
     }
 
@@ -1289,7 +1431,7 @@ void ScreenManager::renderConsole() {
     }
     ImGui::Separator();
 
-    float footerHeight = ImGui::GetFrameHeightWithSpacing() + 52.0f;
+    float footerHeight = ImGui::GetFrameHeightWithSpacing() + 8.0f;
     ImGui::BeginChild("ConsoleLog", ImVec2(0, -footerHeight), true, ImGuiWindowFlags_HorizontalScrollbar);
     for (const auto& entry : consoleHistory) {
         ImGui::TextColored(entry.color, "%s", entry.text.c_str());
@@ -1300,97 +1442,10 @@ void ScreenManager::renderConsole() {
     }
     ImGui::EndChild();
 
-    // СПИСОК ВОЗМОЖНЫХ КОМАНД ДЛЯ АВТОДОПОЛНЕНИЯ И ПОДСКАЗОК
-    static const std::vector<std::string> knownCommands = {
-        "help",
-        "clear",
-        "give all",
-        "give all 20",
-        "give all 50",
-        "give character adeir",
-        "give character renwick",
-        "give character garosh",
-        "give character vex",
-        "give character kaelim",
-        "give character velari",
-        "give character tauros",
-        "give character lumien",
-        "give character silas",
-        "give character finn",
-        "give character elix",
-        "give character tork",
-        "give character mira",
-        "give character roland",
-        "give character born",
-        "give character mortis",
-        "give character siegfried",
-        "give character sylvana",
-        "give character drake",
-        "give character cormac",
-        "give weapon rusty_blade 1",
-        "give weapon old_cleaver 1",
-        "give weapon berserker_axe 1",
-        "give weapon vampire_blade 1",
-        "give food cave_wheat 10",
-        "give food bone_meal 10",
-        "give food rat_meat 10",
-        "give food wild_berries 10",
-        "give material iron_ore 20",
-        "give material scrap_metal 20",
-        "give artifact ancient_core 5",
-        "give artifact sun_stone 5",
-        "give jewelry ruby_ring 2",
-        "give jewelry gold_necklace 2",
-        "give quest oasis_key",
-        "give quest ancient_scroll",
-        "remove character",
-        "remove weapon",
-        "remove food"
-    };
-
-    std::string currentTyped = toLowerCmdStr(consoleInputBuf);
-    std::string bestHint = "";
-    std::vector<std::string> matchingHints;
-
-    if (!currentTyped.empty()) {
-        for (const auto& cmd : knownCommands) {
-            std::string cmdLower = toLowerCmdStr(cmd);
-            if (cmdLower.rfind(currentTyped, 0) == 0) { // Начинается с набранного текста
-                if (bestHint.empty()) bestHint = cmd;
-                matchingHints.push_back(cmd);
-            }
-        }
-        // Если нет префиксного совпадения, ищем подстроку
-        if (matchingHints.empty()) {
-            for (const auto& cmd : knownCommands) {
-                if (toLowerCmdStr(cmd).find(currentTyped) != std::string::npos) {
-                    if (bestHint.empty()) bestHint = cmd;
-                    matchingHints.push_back(cmd);
-                }
-            }
-        }
-    }
-
-    // СТРОКА ПОДСКАЗКИ
-    if (!bestHint.empty()) {
-        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "Подсказка: ");
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.35f, 0.90f, 1.0f, 1.0f), "%s", bestHint.c_str());
-        ImGui::SameLine();
-        ImGui::TextDisabled(" (Нажмите Tab для автодополнения или кликните вариант ниже)");
-    } else {
-        ImGui::TextDisabled("Подсказка: введите 'give all' для получения всех предметов, 'help' для списка");
-    }
-
-    // ПОЛЕ ВВОДА ТЕКСТА
+    // Поле ввода команд
     ImGui::PushItemWidth(-1);
     bool enterPressed = ImGui::InputText("##ConsoleInput", consoleInputBuf, IM_ARRAYSIZE(consoleInputBuf),
         ImGuiInputTextFlags_EnterReturnsTrue);
-    
-    // Перехват Tab для автодополнения
-    if (ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Tab) && !bestHint.empty()) {
-        strncpy_s(consoleInputBuf, bestHint.c_str(), sizeof(consoleInputBuf) - 1);
-    }
 
     if (enterPressed) {
         if (consoleInputBuf[0] != '\0') {
@@ -1400,22 +1455,6 @@ void ScreenManager::renderConsole() {
         ImGui::SetKeyboardFocusHere(-1);
     }
     ImGui::PopItemWidth();
-
-    // КЛИКАБЕЛЬНЫЕ ВАРИАНТЫ ПОДСКАЗОК ПОД ПОЛЕМ ВВОДА
-    if (!matchingHints.empty()) {
-        ImGui::Spacing();
-        int shownCount = 0;
-        for (const auto& hint : matchingHints) {
-            if (shownCount++ >= 4) break;
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.22f, 0.30f, 0.90f));
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.40f, 0.90f, 1.0f, 1.0f));
-            if (ImGui::SmallButton(hint.c_str())) {
-                strncpy_s(consoleInputBuf, hint.c_str(), sizeof(consoleInputBuf) - 1);
-            }
-            ImGui::PopStyleColor(2);
-            ImGui::SameLine(0.0f, 6.0f);
-        }
-    }
 
     ImGui::End();
     ImGui::PopStyleColor(2);
@@ -1475,35 +1514,52 @@ void ScreenManager::renderInventory() {
     ImGui::Separator();
     ImGui::Spacing();
 
-    ItemCategory selectedCategory = tabToCategory(currentInventoryTab);
+        ItemCategory selectedCategory = tabToCategory(currentInventoryTab);
     auto itemsList = playerInventory.getItemsByCategory(selectedCategory);
     auto& dbItems = GameDatabase::getInstance().items;
 
     if (itemsList.empty()) {
-        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "В категории пока нет предметов.");
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "В этой категории пока нет предметов.");
     }
     else {
-        int columns = 4;
+        float availW = ImGui::GetContentRegionAvail().x;
+        float cardMinW = 270.0f;
+        int columns = std::max(1, static_cast<int>(availW / cardMinW));
+
+        ImGui::Columns(columns, "InventoryFullGrid", false);
+
         for (size_t i = 0; i < itemsList.size(); ++i) {
             const auto& stack = itemsList[i];
-            if (dbItems.find(stack.itemId) == dbItems.end()) continue;
-            const auto& itemData = dbItems[stack.itemId];
+            auto itItem = dbItems.find(stack.itemId);
+            if (itItem == dbItems.end()) continue;
+            const auto& itemData = itItem->second;
 
             ImGui::PushID(static_cast<int>(i));
+
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.10f, 0.15f, 0.85f));
+            ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.35f, 0.40f, 0.50f, 0.75f));
+
+            ImGui::BeginChild("InvCard", ImVec2(0.0f, 88.0f), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+            // Иконка предмета слева
+            ImGui::Image(itemData->getImGuiTextureID(), ImVec2(64.0f, 64.0f));
+            ImGui::SameLine(0.0f, 12.0f);
+
+            // Описание предмета справа
             ImGui::BeginGroup();
-
-            ImGui::ImageButton("##InvItemBtn", itemData->getImGuiTextureID(), ImVec2(64, 64));
-            ImGui::SameLine();
-            ImGui::Text("%s\nКол-во: %d\nПродажа: %d монет",
-                itemData->getName().c_str(), stack.count, itemData->getSellPrice());
-
+            ImGui::TextColored(ImVec4(0.95f, 0.90f, 0.60f, 1.0f), "%s", itemData->getName().c_str());
+            ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Кол-во: %d шт.", stack.count);
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.30f, 1.0f), "Цена продажи: %d м", itemData->getSellPrice());
             ImGui::EndGroup();
 
-            if ((i + 1) % columns != 0 && i + 1 < itemsList.size()) {
-                ImGui::SameLine(0.0f, 30.0f);
-            }
+            ImGui::EndChild();
+            ImGui::PopStyleColor(2);
+
             ImGui::PopID();
+            ImGui::NextColumn();
         }
+        ImGui::Columns(1);
     }
 }
 
@@ -1748,7 +1804,7 @@ void ScreenManager::renderLobby() {
 
     // Стилизованный заголовок по центру сверху
     ImGui::Spacing();
-    const char* title = "=== СВЯТИЛИЩЕ ГЕРОЕВ • ЛОББИ ===";
+    const char* title = "=== СВЯТИЛИЩЕ ГЕРОЕВ - ЛОББИ ===";
     float titleWidth = ImGui::CalcTextSize(title).x;
     ImGui::SetCursorPosX((displaySize.x - titleWidth) * 0.5f);
     ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.35f, 1.0f), "%s", title);
@@ -1769,14 +1825,15 @@ void ScreenManager::renderLobby() {
     };
 
     NavTarget targets[] = {
-        {"[ 🗺 ] КАРТА БАШНИ",           "Исследование 10 этажей, битвы, ресурсы и торговцы", ScreenState::Map,             ImVec4(0.20f, 0.50f, 0.80f, 1.0f)},
-        {"[ 👥 ] РЕДАКТОР ОТРЯДА",       "Формирование активного состава из 3 лучших бойцов",  ScreenState::SquadEditor,     ImVec4(0.25f, 0.65f, 0.35f, 1.0f)},
-        {"[ 👤 ] ГЕРОИ И НАВЫКИ",        "Просмотр характеристик, развитие способностей и древо", ScreenState::CharacterEditor, ImVec4(0.65f, 0.40f, 0.80f, 1.0f)},
-        {"[ 🎒 ] ИНВЕНТАРЬ И ПРЕДМЕТЫ",  "Снаряжение, расходуемые припасы, артефакты и еда", ScreenState::Inventory,       ImVec4(0.85f, 0.60f, 0.20f, 1.0f)},
-        {"[ 🏆 ] ЗАЛ ДОСТИЖЕНИЙ",        "Боевые трофеи, рекорды и награды за испытания",     ScreenState::Achievements,    ImVec4(0.90f, 0.75f, 0.25f, 1.0f)}
+        {"Карта этажей",           "Исследование 10 этажей, битвы, торговцы и святилища", ScreenState::Map,             ImVec4(0.20f, 0.50f, 0.80f, 1.0f)},
+        {"Редактор отряда",       "Формирование ударной группы из 3 боевых героев отряда",  ScreenState::SquadEditor,     ImVec4(0.25f, 0.65f, 0.35f, 1.0f)},
+        {"Герои и экипировка",    "Смена экипировки, изучение артефактов и сетов", ScreenState::CharacterEditor, ImVec4(0.65f, 0.40f, 0.80f, 1.0f)},
+        {"Инвентарь и припасы",  "Снаряжение, драгоценные металлы, минералы и еда", ScreenState::Inventory,       ImVec4(0.85f, 0.60f, 0.20f, 1.0f)},
+        {"Зал достижений",        "Список наград, подвигов и бонусов за испытания",     ScreenState::Achievements,    ImVec4(0.90f, 0.75f, 0.25f, 1.0f)},
+        {"Задания и квесты",      "Журнал поручений, охота на монстров и награды",       ScreenState::Quests,          ImVec4(0.30f, 0.70f, 0.85f, 1.0f)}
     };
 
-    int count = 5;
+    int count = 6;
     float cardWidth = 320.0f;
     float cardHeight = 72.0f;
     float spacingX = 30.0f;
@@ -1794,12 +1851,8 @@ void ScreenManager::renderLobby() {
         int row = i / cols;
         int col = i % cols;
 
-        // Если это последний (5-й) элемент, центрируем его на третьей строке
         float posX = startX + col * (cardWidth + spacingX);
         float posY = startY + row * (cardHeight + spacingY);
-        if (i == 4) {
-            posX = (displaySize.x - cardWidth) * 0.5f;
-        }
 
         ImGui::SetCursorPos(ImVec2(posX, posY));
         ImGui::PushID(i);
@@ -1931,9 +1984,17 @@ void ScreenManager::renderCooking() {
     };
 
     static std::vector<SimpleRecipe> recipes = {
-        {"baked_apple", {"apple", "barley"}},
-        {"hearty_mushroom_soup", {"mushroom", "ocean_salt", "dirty_water"}},
-        {"meat_stew", {"rat_meat", "rusty_mushroom", "ocean_salt"}}
+        {"baked_apple", {"greenhouse_apple", "goat_milk"}},
+        {"baked_apple", {"greenhouse_apple", "cave_wheat"}},
+        {"baked_apple", {"wild_berries", "goat_milk"}},
+        {"hearty_mushroom_soup", {"rusty_mushroom", "dirty_water", "glowing_moss"}},
+        {"hearty_mushroom_soup", {"rusty_mushroom", "wild_berries", "dirty_water"}},
+        {"hearty_mushroom_soup", {"shell_meat", "ocean_salt", "dirty_water"}},
+        {"meat_stew", {"rat_meat", "dirty_water", "cave_wheat"}},
+        {"meat_stew", {"fresh_game", "cave_wheat", "dirty_water"}},
+        {"meat_stew", {"gutted_fish", "ocean_salt", "raw_seaweed"}},
+        {"meat_stew", {"salamander_meat", "fire_grain", "thermal_water"}},
+        {"meat_stew", {"fresh_game", "ocean_salt", "cave_wheat"}}
     };
 
     std::string matchedResult = "";
@@ -2277,13 +2338,7 @@ void ScreenManager::renderMap() {
         }
     }
 
-    // Отрисовка декоративных связующих дорожек между точками
-    if (floorNodeCenters.size() >= 2) {
-        for (size_t a = 0; a < floorNodeCenters.size() - 1; ++a) {
-            drawList->AddLine(floorNodeCenters[a], floorNodeCenters[a + 1],
-                              IM_COL32(210, 175, 80, 110), 3.0f);
-        }
-    }
+    // Линии связующих дорожек удалены по требованию пользователя
 
     // Отрисовка интерактивных точек
     for (size_t i = 0; i < mapPoints.size(); ++i) {
@@ -2318,18 +2373,36 @@ void ScreenManager::renderMap() {
 
         switch (point.type) {
         case MapNodeType::Shop:        fillColor = IM_COL32(45, 110, 75, 240); break;
-        case MapNodeType::Combat:      fillColor = IM_COL32(150, 45, 45, 240); break;
+        case MapNodeType::Combat: {
+            if (point.iconKey == "combat_boss") {
+                fillColor = IM_COL32(190, 25, 25, 245);
+            } else if (point.iconKey == "combat_elite") {
+                fillColor = IM_COL32(130, 30, 145, 245);
+            } else {
+                fillColor = IM_COL32(150, 45, 45, 240);
+            }
+            break;
+        }
         case MapNodeType::Cooking:     fillColor = IM_COL32(155, 95, 35, 240); break;
         case MapNodeType::Crafting:    fillColor = IM_COL32(105, 70, 145, 240); break;
+        case MapNodeType::ResourceMine: fillColor = IM_COL32(190, 130, 45, 245); break;
         }
 
-        // Внешнее свечение при наведении
-        if (isHovered) {
+        // Внешнее свечение и пульсация для элитных/босс точек или при наведении
+        if (point.iconKey == "combat_boss") {
+            float p = sinf(static_cast<float>(ImGui::GetTime()) * 4.5f) * 0.35f + 0.65f;
+            drawList->AddCircleFilled(center, r + 8.0f, IM_COL32(255, 30, 30, (int)(110 * p)), 32);
+            borderColor = IM_COL32(255, 65, 65, 255);
+        } else if (point.iconKey == "combat_elite") {
+            float p = sinf(static_cast<float>(ImGui::GetTime()) * 3.5f) * 0.3f + 0.7f;
+            drawList->AddCircleFilled(center, r + 6.0f, IM_COL32(215, 60, 255, (int)(85 * p)), 32);
+            borderColor = IM_COL32(255, 215, 60, 255);
+        } else if (isHovered) {
             drawList->AddCircleFilled(center, r + 6.0f, IM_COL32(255, 220, 90, 70), 32);
         }
 
         drawList->AddCircleFilled(center, r, fillColor, 32);
-        drawList->AddCircle(center, r, borderColor, 32, isHovered ? 4.0f : 2.0f);
+        drawList->AddCircle(center, r, borderColor, 32, (isHovered || point.iconKey == "combat_boss") ? 3.5f : 2.0f);
 
         auto itTex = nodeIconTextures.find(point.iconKey);
         if (itTex != nodeIconTextures.end() && itTex->second.getNativeHandle() != 0) {
@@ -2474,6 +2547,12 @@ void ScreenManager::renderMapPopup() {
         ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.2f, 1.0f), "Торговец: %s (Баланс: %d монет)",
             point.merchantName.c_str(), point.merchantInventory.getBalance());
     }
+    else if (point.type == MapNodeType::ResourceMine) {
+        ImGui::TextColored(ImVec4(0.40f, 0.90f, 1.0f, 1.0f), "[ Добыча полезных ископаемых ]");
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.35f, 1.0f), "Богатая жила минералов и ценных самородков.");
+        ImGui::TextDisabled("Добывайте руду для ковки редкого оружия и снаряжения в кузнице!");
+    }
     else if (point.type == MapNodeType::Combat) {
         ImGui::TextColored(ImVec4(0.95f, 0.4f, 0.4f, 1.0f), "Состав лагеря противников:");
         auto& dbEnemies = GameDatabase::getInstance().enemies;
@@ -2526,6 +2605,15 @@ void ScreenManager::renderMapPopup() {
         case MapNodeType::Crafting:
             currentScreen = ScreenState::Crafting;
             break;
+
+        case MapNodeType::ResourceMine:
+            currentMiningFloor = currentFloor;
+            miningAttemptsLeft = 5;
+            miningTotalYield = 0;
+            miningFeedbackMsg = "Сконцентрируйтесь и нанесите удар киркой в зеленую резонансную зону!";
+            miningFeedbackColor = ImVec4(0.4f, 0.9f, 1.0f, 1.0f);
+            currentScreen = ScreenState::Mining;
+            break;
         }
 
         selectedMapPointIndex = -1;
@@ -2550,15 +2638,718 @@ void ScreenManager::renderMapPopup() {
 // =============================================================================
 // ДОСТИЖЕНИЯ
 // =============================================================================
+void ScreenManager::initAchievements() {
+    achievements.clear();
+
+    // ==========================================
+    // 1. ГЛОБАЛЬНЫЕ ДОСТИЖЕНИЯ (ОБЩИЕ ДЛЯ ВСЕХ СОХРАНЕНИЙ)
+    // ==========================================
+    achievements.push_back({
+        "global_first_step",
+        "Первые шаги",
+        "Начать восхождение по таинственному Шпилю в любом сохранении.",
+        "*",
+        true,
+        true
+    });
+    achievements.push_back({
+        "global_floor_5",
+        "Покоритель высот",
+        "Достичь 5-го этажа Башни (Свалка Забвения).",
+        "*",
+        true,
+        false
+    });
+    achievements.push_back({
+        "global_floor_10",
+        "Врата Истока",
+        "Добраться до 10-го этажа Башни (Престол Первозданного Истока).",
+        "*",
+        true,
+        false
+    });
+    achievements.push_back({
+        "global_master_blacksmith",
+        "Мастер горна",
+        "Выковать легендарное оружие в кузнице из собранных редких руд.",
+        "*",
+        true,
+        false
+    });
+    achievements.push_back({
+        "global_hero_collector",
+        "Легендарный созыв",
+        "Собрать 10 уникальных героев в своем резерве или отряде.",
+        "*",
+        true,
+        false
+    });
+    achievements.push_back({
+        "global_mining_king",
+        "Золотая жила",
+        "Совершить критический точный удар киркой по рудной жиле.",
+        "*",
+        true,
+        false
+    });
+    achievements.push_back({
+        "global_boss_slayer",
+        "Гроза чудовищ",
+        "Одержать сокрушительную победу над великим боссом этажа.",
+        "*",
+        true,
+        false
+    });
+
+    // ==========================================
+    // 2. ПРОФИЛЬНЫЕ ДОСТИЖЕНИЯ (ТЕКУЩЕЕ СОХРАНЕНИЕ)
+    // ==========================================
+    achievements.push_back({
+        "profile_first_blood",
+        "Первая кровь",
+        "Одержать первую победу в тактическом сражении.",
+        "1",
+        false,
+        false
+    });
+    achievements.push_back({
+        "profile_full_gear",
+        "Во всеоружии",
+        "Полностью заполнить все 5 слотов экипировки у одного персонажа.",
+        "2",
+        false,
+        false
+    });
+    achievements.push_back({
+        "profile_set_synergy",
+        "Сила комплекта",
+        "Активировать полный комплектный бонус из 4 предметов артефактов.",
+        "3",
+        false,
+        false
+    });
+    achievements.push_back({
+        "profile_rich",
+        "Богатей",
+        "Накопить более 1000 золотых монет в кошельке отряда.",
+        "4",
+        false,
+        false
+    });
+}
+
+void ScreenManager::loadGlobalAchievements() {
+    std::ifstream file("saves/global_achievements.txt");
+    if (!file.is_open()) return;
+
+    std::unordered_set<std::string> unlockedIds;
+    std::string line;
+    while (std::getline(file, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!line.empty()) unlockedIds.insert(line);
+    }
+    file.close();
+
+    for (auto& ach : achievements) {
+        if (ach.isGlobal && unlockedIds.find(ach.id) != unlockedIds.end()) {
+            ach.isUnlocked = true;
+        }
+    }
+}
+
+void ScreenManager::saveGlobalAchievements() {
+    std::filesystem::create_directories("saves");
+    std::ofstream file("saves/global_achievements.txt");
+    if (!file.is_open()) return;
+
+    for (const auto& ach : achievements) {
+        if (ach.isGlobal && ach.isUnlocked) {
+            file << ach.id << "\n";
+        }
+    }
+    file.close();
+}
+
+bool ScreenManager::unlockAchievement(const std::string& idOrTitle) {
+    std::string needle = toLowerCmdStr(idOrTitle);
+    for (auto& ach : achievements) {
+        if (toLowerCmdStr(ach.id) == needle || toLowerCmdStr(ach.title).find(needle) != std::string::npos) {
+            ach.isUnlocked = true;
+            if (ach.isGlobal) {
+                saveGlobalAchievements();
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ScreenManager::lockAchievement(const std::string& idOrTitle) {
+    std::string needle = toLowerCmdStr(idOrTitle);
+    for (auto& ach : achievements) {
+        if (toLowerCmdStr(ach.id) == needle || toLowerCmdStr(ach.title).find(needle) != std::string::npos) {
+            ach.isUnlocked = false;
+            if (ach.isGlobal) {
+                saveGlobalAchievements();
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 void ScreenManager::renderAchievements() {
-    ImGui::Text("=== ДОСТИЖЕНИЯ ===");
+    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.35f, 1.0f), "=== ЗАЛ ДОСТИЖЕНИЙ И НАГРАД ===");
     ImGui::SameLine(ImGui::GetWindowWidth() - 200.0f);
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.45f, 0.85f, 1.0f));
-    if (ImGui::Button("<- В Лобби##AchBack", ImVec2(170.0f, 0.0f))) {
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.45f, 0.85f, 1.0f));
+    if (ImGui::Button("<- В лобби##AchBack", ImVec2(170.0f, 26.0f))) {
         currentScreen = ScreenState::Lobby;
     }
     ImGui::PopStyleColor();
-    ImGui::Separator(); 
+
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // Подсчет статистики достижений
+    int totalCount = static_cast<int>(achievements.size());
+    int totalUnlocked = 0;
+    int globalCount = 0;
+    int globalUnlocked = 0;
+    int profileCount = 0;
+    int profileUnlocked = 0;
+
+    for (const auto& ach : achievements) {
+        if (ach.isGlobal) {
+            globalCount++;
+            if (ach.isUnlocked) globalUnlocked++;
+        } else {
+            profileCount++;
+            if (ach.isUnlocked) profileUnlocked++;
+        }
+        if (ach.isUnlocked) totalUnlocked++;
+    }
+
+    float ratio = totalCount > 0 ? (static_cast<float>(totalUnlocked) / static_cast<float>(totalCount)) : 0.0f;
+
+    ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Общий прогресс: %d / %d (%.0f%%)",
+        totalUnlocked, totalCount, ratio * 100.0f);
+    ImGui::SameLine(ImGui::GetWindowWidth() - 430.0f);
+    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.30f, 1.0f), "Глобальные: %d/%d  |  Профиль: %d/%d",
+        globalUnlocked, globalCount, profileUnlocked, profileCount);
+
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.85f, 0.70f, 0.20f, 1.0f));
+    ImGui::ProgressBar(ratio, ImVec2(-1.0f, 14.0f), "");
+    ImGui::PopStyleColor();
+
+    ImGui::Spacing();
+
+    // Фильтр-вкладки
+    auto filterBtn = [&](const char* title, int tabIdx) {
+        bool isActive = (currentAchievementTab == tabIdx);
+        if (isActive) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.50f, 0.85f, 1.0f));
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.15f, 0.22f, 0.85f));
+        }
+        if (ImGui::Button(title, ImVec2(180.0f, 28.0f))) {
+            currentAchievementTab = tabIdx;
+        }
+        ImGui::PopStyleColor();
+    };
+
+    filterBtn("Все достижения", 0);
+    ImGui::SameLine();
+    filterBtn("Глобальные (Общие)", 1);
+    ImGui::SameLine();
+    filterBtn("Профиль (Сохранение)", 2);
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // Скроллируемый список карточек достижений
+    ImGui::BeginChild("AchievementsScrollList", ImVec2(0.0f, -10.0f), false);
+
+    float availW = ImGui::GetContentRegionAvail().x;
+    float cardW = std::min(availW, 920.0f);
+    float startX = (availW - cardW) * 0.5f;
+    if (startX < 0.0f) startX = 0.0f;
+
+    for (size_t i = 0; i < achievements.size(); ++i) {
+        const auto& ach = achievements[i];
+
+        if (currentAchievementTab == 1 && !ach.isGlobal) continue;
+        if (currentAchievementTab == 2 && ach.isGlobal) continue;
+
+        ImGui::SetCursorPosX(startX);
+        ImGui::PushID(static_cast<int>(i));
+
+        ImVec4 bgCol = ach.isUnlocked ? ImVec4(0.10f, 0.16f, 0.14f, 0.90f) : ImVec4(0.07f, 0.08f, 0.12f, 0.85f);
+        ImVec4 borderCol = ach.isUnlocked
+            ? (ach.isGlobal ? ImVec4(1.0f, 0.85f, 0.25f, 0.95f) : ImVec4(0.35f, 0.90f, 0.50f, 0.90f))
+            : ImVec4(0.25f, 0.28f, 0.35f, 0.60f);
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, bgCol);
+        ImGui::PushStyleColor(ImGuiCol_Border, borderCol);
+        ImGui::BeginChild("AchCard", ImVec2(cardW, 76.0f), true, ImGuiWindowFlags_NoScrollbar);
+
+        // Иконка
+        ImGui::SetCursorPos(ImVec2(14.0f, 14.0f));
+        if (ach.isUnlocked) {
+            ImGui::TextColored(ach.isGlobal ? ImVec4(1.0f, 0.85f, 0.25f, 1.0f) : ImVec4(0.35f, 0.95f, 0.50f, 1.0f),
+                "%s", ach.icon.c_str());
+        } else {
+            ImGui::TextColored(ImVec4(0.50f, 0.50f, 0.55f, 0.8f), "?");
+        }
+
+        // Заголовок и тип
+        ImGui::SetCursorPos(ImVec2(56.0f, 10.0f));
+        if (ach.isGlobal) {
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.30f, 1.0f), "ГЛОБАЛЬНОЕ");
+            ImGui::SameLine();
+        } else {
+            ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.0f, 1.0f), "ПРОФИЛЬ");
+            ImGui::SameLine();
+        }
+
+        ImGui::TextColored(ach.isUnlocked ? ImVec4(1.0f, 1.0f, 1.0f, 1.0f) : ImVec4(0.65f, 0.65f, 0.70f, 1.0f),
+            "%s", ach.title.c_str());
+
+        // Описание
+        ImGui::SetCursorPos(ImVec2(56.0f, 36.0f));
+        ImGui::TextColored(ImVec4(0.70f, 0.75f, 0.80f, 1.0f), "%s", ach.description.c_str());
+
+        // Статус справа
+        ImGui::SetCursorPos(ImVec2(cardW - 190.0f, 24.0f));
+        if (ach.isUnlocked) {
+            ImGui::TextColored(ImVec4(0.30f, 1.0f, 0.45f, 1.0f), "РАЗБЛОКИРОВАНО");
+        } else {
+            ImGui::TextColored(ImVec4(0.50f, 0.50f, 0.55f, 1.0f), "В ПРОЦЕССЕ");
+        }
+
+        ImGui::EndChild();
+        ImGui::PopStyleColor(2);
+        ImGui::PopID();
+        ImGui::Spacing();
+    }
+
+    ImGui::EndChild();
+}
+
+// =============================================================================
+// СИСТЕМА КВЕСТОВ И ЗАДАНИЙ
+// =============================================================================
+
+void ScreenManager::initQuests() {
+    quests.clear();
+
+    // ==========================================
+    // СЮЖЕТНЫЕ ЗАДАНИЯ (STORY QUESTS)
+    // ==========================================
+    quests.push_back({
+        "quest_reach_floor3",
+        "Вглубь Шпиля",
+        "Преодолейте сопротивление монстров и откройте путь на 3 этаж (Подводные глубины).",
+        "Исследование",
+        true, // Сюжетный!
+        0, 1, "3 этаж открыт",
+        500, 250, "ruby_ring", 1,
+        QuestStatus::InProgress
+    });
+
+    quests.push_back({
+        "quest_reach_floor5",
+        "Путь к Забвению",
+        "Доберитесь до 5 этажа Башни (Свалка Забвения) и исследуйте древние механизмы.",
+        "Исследование",
+        true, // Сюжетный!
+        0, 1, "5 этаж достигнут",
+        750, 400, "sun_stone", 1,
+        QuestStatus::InProgress
+    });
+
+    quests.push_back({
+        "quest_defeat_boss1",
+        "Падение колосса",
+        "Сразите Костяного колосса на 1 этаже, чтобы снять печать спуска.",
+        "Охота",
+        true, // Сюжетный!
+        0, 1, "Колосс повержен",
+        600, 300, "ancient_core", 1,
+        QuestStatus::InProgress
+    });
+
+    // ==========================================
+    // ПОБОЧНЫЕ ЗАДАНИЯ (SIDE QUESTS)
+    // ==========================================
+    quests.push_back({
+        "quest_rats_skeletons",
+        "Зачистка катакомб",
+        "Истребите бродячую нежить на 1 этаже Шпиля для защиты караванов.",
+        "Охота",
+        false, // Побочный!
+        0, 5, "уничтожено монстров",
+        250, 150, "", 0,
+        QuestStatus::InProgress
+    });
+
+    quests.push_back({
+        "quest_mine_ores",
+        "Кузнечные пробы",
+        "Добудьте куски железной руды в рудной жиле на карте этажа.",
+        "Добыча",
+        false, // Побочный!
+        0, 5, "железной руды в инвентаре",
+        300, 100, "old_cleaver", 1,
+        QuestStatus::InProgress
+    });
+
+    quests.push_back({
+        "quest_forge_weapon",
+        "Искусство горна",
+        "Используйте ресурсы кузницы для ковки нового клинка, топора или лука.",
+        "Кузница",
+        false, // Побочный!
+        0, 1, "оружие сковано",
+        400, 200, "fire_crystal", 2,
+        QuestStatus::InProgress
+    });
+
+    quests.push_back({
+        "quest_slay_elite",
+        "Гроза элиты",
+        "Сразитесь с любым элитным командиром монстров и одержите верх.",
+        "Охота",
+        false, // Побочный!
+        0, 1, "элитный командир повержен",
+        600, 300, "guardian_helm", 1,
+        QuestStatus::InProgress
+    });
+
+    quests.push_back({
+        "quest_cooking_taste",
+        "Секреты полевой кухни",
+        "Приготовьте любое сытное блюдо в котелке для поддержания сил отряда.",
+        "Кулинария",
+        false, // Побочный!
+        0, 1, "блюдо приготовлено",
+        350, 150, "meat_stew", 2,
+        QuestStatus::InProgress
+    });
+}
+
+void ScreenManager::updateQuestsProgress() {
+    for (auto& q : quests) {
+        if (q.status == QuestStatus::Claimed) continue;
+
+        if (q.id == "quest_mine_ores") {
+            q.currentProgress = playerInventory.getItemCount("iron_ore");
+        } else if (q.id == "quest_reach_floor3") {
+            q.currentProgress = (currentFloor >= 3 || maxUnlockedFloor >= 3) ? 1 : 0;
+        } else if (q.id == "quest_reach_floor5") {
+            q.currentProgress = (currentFloor >= 5 || maxUnlockedFloor >= 5) ? 1 : 0;
+        }
+
+        if (q.currentProgress >= q.targetProgress && q.status == QuestStatus::InProgress) {
+            q.status = QuestStatus::Completed;
+        }
+    }
+}
+
+void ScreenManager::renderQuests() {
+    updateQuestsProgress();
+
+    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.35f, 1.0f), "=== ЖУРНАЛ ЗАДАНИЙ И ПОРУЧЕНИЙ ===");
+    ImGui::SameLine(ImGui::GetWindowWidth() - 200.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.45f, 0.85f, 1.0f));
+    if (ImGui::Button("<- В лобби##QuestsBack", ImVec2(170.0f, 26.0f))) {
+        currentScreen = ScreenState::Lobby;
+    }
+    ImGui::PopStyleColor();
+
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // Подсчет статистики квестов
+    int totalCount = static_cast<int>(quests.size());
+    int storyCount = 0;
+    int sideCount = 0;
+    int readyCount = 0;
+    int claimedCount = 0;
+
+    for (const auto& q : quests) {
+        if (q.isStory) storyCount++;
+        else sideCount++;
+        if (q.status == QuestStatus::Completed) readyCount++;
+        if (q.status == QuestStatus::Claimed) claimedCount++;
+    }
+
+    ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Всего заданий: %d", totalCount);
+    ImGui::SameLine(200.0f);
+    if (readyCount > 0) {
+        ImGui::TextColored(ImVec4(0.30f, 1.0f, 0.45f, 1.0f), "Готовы к сдаче: %d!", readyCount);
+    } else {
+        ImGui::TextDisabled("Готовы к сдаче: 0");
+    }
+    ImGui::SameLine(420.0f);
+    ImGui::TextColored(ImVec4(0.85f, 0.80f, 0.40f, 1.0f), "Выполнено: %d", claimedCount);
+
+    ImGui::Spacing();
+
+    // Вкладки выбора категории квестов: Все, Сюжетные, Побочные
+    auto questTabBtn = [&](const char* title, int tabIdx) {
+        bool isActive = (currentQuestFilterTab == tabIdx);
+        if (isActive) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.50f, 0.85f, 1.0f));
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.15f, 0.22f, 0.85f));
+        }
+        if (ImGui::Button(title, ImVec2(170.0f, 28.0f))) {
+            currentQuestFilterTab = tabIdx;
+        }
+        ImGui::PopStyleColor();
+    };
+
+    std::string allTitle = "Все квесты (" + std::to_string(totalCount) + ")";
+    std::string storyTitle = "Сюжетные (" + std::to_string(storyCount) + ")";
+    std::string sideTitle = "Побочные (" + std::to_string(sideCount) + ")";
+
+    questTabBtn(allTitle.c_str(), 0);
+    ImGui::SameLine();
+    questTabBtn(storyTitle.c_str(), 1);
+    ImGui::SameLine();
+    questTabBtn(sideTitle.c_str(), 2);
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    float availW = ImGui::GetContentRegionAvail().x;
+    float leftColW = std::clamp(availW * 0.36f, 320.0f, 400.0f);
+    float rightColW = availW - leftColW - 15.0f;
+
+    ImGui::Columns(2, "QuestsMasterDetailColumns", false);
+    ImGui::SetColumnWidth(0, leftColW);
+    ImGui::SetColumnWidth(1, rightColW);
+
+    auto& db = GameDatabase::getInstance();
+
+    // =========================================================================
+    // ЛЕВЫЙ СТОЛБЕЦ: СПИСОК КВЕСТОВ (КЛИКАБЕЛЬНЫЕ)
+    // =========================================================================
+    ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Список заданий:");
+    ImGui::Spacing();
+
+    ImGui::BeginChild("QuestsMasterList", ImVec2(0.0f, -10.0f), true);
+
+    int displayedCount = 0;
+    QuestData* activeSelectedQuest = nullptr;
+
+    for (size_t i = 0; i < quests.size(); ++i) {
+        auto& q = quests[i];
+        if (currentQuestFilterTab == 1 && !q.isStory) continue;
+        if (currentQuestFilterTab == 2 && q.isStory) continue;
+
+        if (selectedQuestId.empty()) {
+            selectedQuestId = q.id;
+        }
+        if (q.id == selectedQuestId) {
+            activeSelectedQuest = &q;
+        }
+
+        displayedCount++;
+        ImGui::PushID(static_cast<int>(i));
+
+        bool isSelected = (q.id == selectedQuestId);
+
+        ImVec4 bgCol = isSelected 
+            ? ImVec4(0.16f, 0.22f, 0.32f, 0.95f)
+            : ((q.status == QuestStatus::Completed) 
+                ? ImVec4(0.10f, 0.18f, 0.14f, 0.85f) 
+                : (q.status == QuestStatus::Claimed ? ImVec4(0.07f, 0.08f, 0.11f, 0.70f) : ImVec4(0.09f, 0.11f, 0.16f, 0.85f)));
+
+        ImVec4 borderCol = isSelected 
+            ? ImVec4(1.0f, 0.85f, 0.25f, 1.0f)
+            : ((q.status == QuestStatus::Completed)
+                ? ImVec4(0.35f, 1.0f, 0.50f, 1.0f)
+                : (q.status == QuestStatus::Claimed ? ImVec4(0.30f, 0.35f, 0.45f, 0.50f) : (q.isStory ? ImVec4(0.80f, 0.65f, 0.25f, 0.75f) : ImVec4(0.25f, 0.50f, 0.80f, 0.75f))));
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, bgCol);
+        ImGui::PushStyleColor(ImGuiCol_Border, borderCol);
+        ImGui::BeginChild("QuestItemBox", ImVec2(0.0f, 78.0f), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+        // Строка 1: тип квеста и статус
+        if (q.isStory) {
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.30f, 1.0f), "Сюжетное (%s)", q.category.c_str());
+        } else {
+            ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Побочное (%s)", q.category.c_str());
+        }
+        ImGui::SameLine(ImGui::GetContentRegionAvail().x - 75.0f);
+        if (q.status == QuestStatus::Completed) {
+            ImGui::TextColored(ImVec4(0.30f, 1.0f, 0.45f, 1.0f), "Готово!");
+        } else if (q.status == QuestStatus::Claimed) {
+            ImGui::TextDisabled("Сдано");
+        } else {
+            ImGui::TextColored(ImVec4(0.40f, 0.75f, 1.0f, 0.85f), "В работе");
+        }
+
+        // Строка 2: Название квеста
+        ImGui::TextColored(isSelected ? ImVec4(1.0f, 0.95f, 0.65f, 1.0f) : ImVec4(0.95f, 0.95f, 0.95f, 1.0f), "%s", q.title.c_str());
+
+        // Строка 3: Индикатор прогресса
+        float pRatio = std::clamp(static_cast<float>(q.currentProgress) / static_cast<float>(q.targetProgress), 0.0f, 1.0f);
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, (pRatio >= 1.0f) ? ImVec4(0.25f, 0.85f, 0.40f, 1.0f) : ImVec4(0.20f, 0.55f, 0.90f, 1.0f));
+        ImGui::ProgressBar(pRatio, ImVec2(120.0f, 10.0f), "");
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        ImGui::TextDisabled("%d/%d %s", std::min(q.currentProgress, q.targetProgress), q.targetProgress, q.progressLabel.c_str());
+
+        ImGui::EndChild();
+        ImGui::PopStyleColor(2);
+
+        // Клик по карточке квеста выбирает его для детального просмотра
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                selectedQuestId = q.id;
+            }
+        }
+
+        ImGui::PopID();
+        ImGui::Spacing();
+    }
+
+    if (displayedCount == 0) {
+        ImGui::Spacing();
+        ImGui::TextDisabled("В этой категории нет доступных заданий.");
+    }
+
+    ImGui::EndChild();
+
+    // =========================================================================
+    // ПРАВЫЙ СТОЛБЕЦ: ПОДРОБНОЕ ОПИСАНИЕ И НАГРАДЫ КВЕСТА
+    // =========================================================================
+    ImGui::NextColumn();
+
+    if (!activeSelectedQuest && !quests.empty()) {
+        for (auto& q : quests) {
+            if (currentQuestFilterTab == 1 && !q.isStory) continue;
+            if (currentQuestFilterTab == 2 && q.isStory) continue;
+            activeSelectedQuest = &q;
+            selectedQuestId = q.id;
+            break;
+        }
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.10f, 0.15f, 0.90f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.25f, 0.50f, 0.80f, 0.70f));
+    ImGui::BeginChild("QuestDetailPanel", ImVec2(0.0f, -10.0f), true);
+
+    if (activeSelectedQuest) {
+        auto& q = *activeSelectedQuest;
+
+        // Заголовок квеста
+        ImGui::TextColored(ImVec4(1.0f, 0.88f, 0.35f, 1.0f), "%s", q.title.c_str());
+        if (q.isStory) {
+            ImGui::TextColored(ImVec4(1.0f, 0.80f, 0.30f, 1.0f), "Сюжетное задание  |  Категория: %s", q.category.c_str());
+        } else {
+            ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Побочное поручение  |  Категория: %s", q.category.c_str());
+        }
+
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // Описание
+        ImGui::TextColored(ImVec4(0.85f, 0.88f, 0.95f, 1.0f), "Описание задания:");
+        ImGui::TextWrapped("%s", q.description.c_str());
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // Цель и прогресс
+        ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Цель задания:");
+        ImGui::Text("%s", q.progressLabel.c_str());
+        ImGui::Spacing();
+
+        float pRatio = std::clamp(static_cast<float>(q.currentProgress) / static_cast<float>(q.targetProgress), 0.0f, 1.0f);
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, (pRatio >= 1.0f) ? ImVec4(0.25f, 0.85f, 0.40f, 1.0f) : ImVec4(0.20f, 0.55f, 0.90f, 1.0f));
+        ImGui::ProgressBar(pRatio, ImVec2(-1.0f, 18.0f), "");
+        ImGui::PopStyleColor();
+        ImGui::TextDisabled("Текущий прогресс: %d из %d (%d%%)", std::min(q.currentProgress, q.targetProgress), q.targetProgress, static_cast<int>(pRatio * 100.0f));
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // Награды
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.30f, 1.0f), "Награда за выполнение задания:");
+        ImGui::Spacing();
+
+        // Золото
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.25f, 1.0f), "Золотые монеты: +%d монет", q.rewardGold);
+
+        // Опыт
+        if (q.rewardExp > 0) {
+            ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Опыт отряда: +%d опыта", q.rewardExp);
+        }
+
+        // Предмет
+        if (!q.rewardItemId.empty()) {
+            ImGui::Spacing();
+            auto itItem = db.items.find(q.rewardItemId);
+            std::string itemName = (itItem != db.items.end()) ? itItem->second->getName() : q.rewardItemId;
+
+            if (itItem != db.items.end()) {
+                ImGui::Image(itItem->second->getImGuiTextureID(), ImVec2(48.0f, 48.0f));
+                ImGui::SameLine(0.0f, 12.0f);
+            }
+
+            ImGui::BeginGroup();
+            ImGui::TextColored(ImVec4(0.90f, 0.70f, 1.0f, 1.0f), "Наградной предмет: %s (x%d)", itemName.c_str(), q.rewardItemCount);
+            auto itW = db.weapons.find(q.rewardItemId);
+            if (itW != db.weapons.end()) {
+                ImGui::TextDisabled("Оружие: %s", itW->second->getEffectDesc().c_str());
+            } else {
+                auto itA = db.artifacts.find(q.rewardItemId);
+                if (itA != db.artifacts.end()) {
+                    ImGui::TextDisabled("Артефакт: %s", itA->second->getEffectDesc().c_str());
+                } else if (itItem != db.items.end()) {
+                    ImGui::TextDisabled("Цена: %d монет", itItem->second->getSellPrice());
+                }
+            }
+            ImGui::EndGroup();
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // Кнопка сдачи
+        if (q.status == QuestStatus::Completed) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.70f, 0.35f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.28f, 0.85f, 0.45f, 1.0f));
+            if (ImGui::Button("Забрать награду##DetailClaim", ImVec2(220.0f, 36.0f))) {
+                playerInventory.addFunds(q.rewardGold);
+                if (!q.rewardItemId.empty()) {
+                    playerInventory.addItem(q.rewardItemId, q.rewardItemCount);
+                }
+                q.status = QuestStatus::Claimed;
+            }
+            ImGui::PopStyleColor(2);
+        } else if (q.status == QuestStatus::Claimed) {
+            ImGui::TextColored(ImVec4(0.40f, 0.85f, 0.50f, 1.0f), "Награда за это задание уже получена.");
+        } else {
+            ImGui::TextColored(ImVec4(0.50f, 0.70f, 0.90f, 1.0f), "Задание находится в процессе выполнения.");
+        }
+    } else {
+        ImGui::TextDisabled("Выберите задание из списка слева для просмотра деталей.");
+    }
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+
+    ImGui::Columns(1);
 }
 
 // =============================================================================
@@ -2673,22 +3464,578 @@ void ScreenManager::renderSquadEditor() {
 }
 
 // =============================================================================
-// РЕДАКТОР ПЕРСОНАЖА
+// РЕДАКТОР ПЕРСОНАЖА И СИСТЕМА ЭКИПИРОВКИ
 // =============================================================================
+
+// =============================================================================
+// РЕДАКТОР ПЕРСОНАЖА И СИСТЕМА ЭКИПИРОВКИ
+// =============================================================================
+
+void ScreenManager::renderSlotPickerModal(std::shared_ptr<PlayerCharacter> character) {
+    if (!character || activeSlotPicker == ArtifactType::None) return;
+
+    if (requestOpenSlotPicker) {
+        ImGui::OpenPopup("##EquipItemModal");
+        requestOpenSlotPicker = false;
+    }
+
+    bool isModalOpen = true;
+    if (ImGui::BeginPopupModal("##EquipItemModal", &isModalOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
+        std::string slotName = "ПРЕДМЕТ";
+        switch (activeSlotPicker) {
+        case ArtifactType::Weapon:   slotName = "ОРУЖИЕ"; break;
+        case ArtifactType::Headgear: slotName = "ГОЛОВНОЙ УБОР"; break;
+        case ArtifactType::Costume:  slotName = "КОСТЮМ / ДОСПЕХ"; break;
+        case ArtifactType::Amulet:   slotName = "АМУЛЕТ"; break;
+        case ArtifactType::Ring:     slotName = "КОЛЬЦО"; break;
+        default: break;
+        }
+
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.30f, 1.0f), "ВЫБЕРИТЕ %s ДЛЯ: %s",
+            slotName.c_str(), character->getName().c_str());
+        ImGui::TextDisabled("Отображаются только предметы вашего инвентаря, подходящие под этот слот:");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // Опция убрать предмет из этого слота
+        std::string equippedId;
+        if (activeSlotPicker == ArtifactType::Weapon) {
+            equippedId = character->getEquippedWeapon();
+        } else if (activeSlotPicker == ArtifactType::Headgear) {
+            equippedId = character->getEquippedHeadgear();
+        } else if (activeSlotPicker == ArtifactType::Costume) {
+            equippedId = character->getEquippedCostume();
+        } else if (activeSlotPicker == ArtifactType::Amulet) {
+            equippedId = character->getEquippedAmulet();
+        } else if (activeSlotPicker == ArtifactType::Ring) {
+            equippedId = character->getEquippedRing();
+        }
+
+        if (!equippedId.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.65f, 0.20f, 0.20f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.25f, 0.25f, 1.0f));
+            if (ImGui::Button("Убрать предмет из слота (Снять)##UnequipSlotModal", ImVec2(280.0f, 26.0f))) {
+                if (activeSlotPicker == ArtifactType::Weapon) {
+                    character->unequipWeapon(playerInventory);
+                } else {
+                    character->unequipArtifact(activeSlotPicker, playerInventory);
+                }
+                activeSlotPicker = ArtifactType::None;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::PopStyleColor(2);
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+        }
+
+        auto& db = GameDatabase::getInstance();
+        bool anyFound = false;
+
+        ImGui::BeginChild("EligibleItemsScroll", ImVec2(520.0f, 300.0f), true);
+
+        if (activeSlotPicker == ArtifactType::Weapon) {
+            for (const auto& [wId, wTmpl] : db.weapons) {
+                int count = playerInventory.getItemCount(wId);
+                if (count > 0) {
+                    anyFound = true;
+                    ImGui::PushID(wId.c_str());
+
+                    // Показываем иконку оружия
+                    auto itItem = db.items.find(wId);
+                    if (itItem != db.items.end()) {
+                        ImGui::Image(itItem->second->getImGuiTextureID(), ImVec2(44.0f, 44.0f));
+                        ImGui::SameLine(0.0f, 10.0f);
+                    }
+
+                    ImGui::BeginGroup();
+                    ImGui::TextColored(ImVec4(0.35f, 0.85f, 1.0f, 1.0f), "%s (В сумке: %d шт.)",
+                        wTmpl->getName().c_str(), count);
+                    ImGui::TextDisabled("Урон: +%.0f | %s",
+                        wTmpl->getDamageAtLevel(character->getLevel()),
+                        wTmpl->getEffectDesc().c_str());
+                    if (ImGui::Button("Надеть в слот оружия##PickWeapon", ImVec2(180.0f, 24.0f))) {
+                        character->equipWeapon(wId, playerInventory);
+                        activeSlotPicker = ArtifactType::None;
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::EndGroup();
+
+                    ImGui::Separator();
+                    ImGui::Spacing();
+                    ImGui::PopID();
+                }
+            }
+        } else {
+            for (const auto& [artId, artTmpl] : db.artifacts) {
+                if (artTmpl->getArtifactType() == activeSlotPicker) {
+                    int count = playerInventory.getItemCount(artId);
+                    if (count > 0) {
+                        anyFound = true;
+                        ImGui::PushID(artId.c_str());
+
+                        // Показываем иконку артефакта
+                        auto itItem = db.items.find(artId);
+                        if (itItem != db.items.end()) {
+                            ImGui::Image(itItem->second->getImGuiTextureID(), ImVec2(44.0f, 44.0f));
+                            ImGui::SameLine(0.0f, 10.0f);
+                        }
+
+                        ImGui::BeginGroup();
+                        ImGui::TextColored(ImVec4(0.95f, 0.80f, 0.35f, 1.0f), "%s (В сумке: %d шт.)",
+                            artTmpl->getName().c_str(), count);
+                        if (!artTmpl->getSetId().empty()) {
+                            auto itSet = db.artifactSets.find(artTmpl->getSetId());
+                            if (itSet != db.artifactSets.end()) {
+                                ImGui::TextColored(ImVec4(0.45f, 0.95f, 0.55f, 1.0f), "Комплект: «%s»",
+                                    itSet->second.name.c_str());
+                            }
+                        }
+                        ImGui::TextDisabled("Бонусы: %s", artTmpl->getEffectDesc().c_str());
+                        if (ImGui::Button("Надеть в слот артефакта##PickArtifact", ImVec2(180.0f, 24.0f))) {
+                            character->equipArtifact(activeSlotPicker, artId, playerInventory);
+                            activeSlotPicker = ArtifactType::None;
+                            ImGui::CloseCurrentPopup();
+                        }
+                        ImGui::EndGroup();
+
+                        ImGui::Separator();
+                        ImGui::Spacing();
+                        ImGui::PopID();
+                    }
+                }
+            }
+        }
+
+        if (!anyFound) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "В инвентаре нет доступных предметов для этого слота!");
+            ImGui::TextDisabled("Используйте команду 'give all' в консоли для выдачи тестового комплекта.");
+            if (ImGui::Button("Выдать начальное снаряжение##QuickGear", ImVec2(240.0f, 26.0f))) {
+                playerInventory.addItem("rusty_blade", 1);
+                playerInventory.addItem("guardian_helm", 1);
+                playerInventory.addItem("guardian_armor", 1);
+                playerInventory.addItem("guardian_amulet", 1);
+                playerInventory.addItem("guardian_ring", 1);
+                playerInventory.addItem("ash_hood", 1);
+                playerInventory.addItem("ash_robe", 1);
+                playerInventory.addItem("ash_amulet", 1);
+                playerInventory.addItem("ash_ring", 1);
+                playerInventory.addItem("berserker_mask", 1);
+                playerInventory.addItem("berserker_harness", 1);
+                playerInventory.addItem("berserker_amulet", 1);
+                playerInventory.addItem("berserker_ring", 1);
+                playerInventory.addItem("rift_cowl", 1);
+                playerInventory.addItem("rift_vestment", 1);
+                playerInventory.addItem("rift_talisman", 1);
+                playerInventory.addItem("rift_ring", 1);
+            }
+        }
+
+        ImGui::EndChild();
+        ImGui::Spacing();
+
+        if (ImGui::Button("Закрыть окно##ClosePicker", ImVec2(140.0f, 28.0f))) {
+            activeSlotPicker = ArtifactType::None;
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+
+    if (!isModalOpen || (!requestOpenSlotPicker && !ImGui::IsPopupOpen("##EquipItemModal"))) {
+        activeSlotPicker = ArtifactType::None;
+    }
+}
+
 void ScreenManager::renderCharacterEditor() {
-    ImGui::Text("=== РЕДАКТОР ПЕРСОНАЖА ===");
+    auto& reserve = playerProfile.getReserve();
+    if (reserve.empty()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "В вашем отряде пока нет доступных персонажей!");
+        if (ImGui::Button("<- В Лобби", ImVec2(160, 30))) currentScreen = ScreenState::Lobby;
+        return;
+    }
+
+    if (selectedEditorCharIndex >= reserve.size()) {
+        selectedEditorCharIndex = 0;
+    }
+    auto currentChar = reserve[selectedEditorCharIndex];
+
+    // --- ВЕРХНЯЯ ПАНЕЛЬ: ЗАГОЛОВОК И КНОПКА ВЫХОДА ---
+    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.30f, 1.0f), "=== РЕДАКТОР СНАРЯЖЕНИЯ И ХАРАКТЕРИСТИК ГЕРОЕВ ===");
     ImGui::SameLine(ImGui::GetWindowWidth() - 200.0f);
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.45f, 0.85f, 1.0f));
-    if (ImGui::Button("<- В Лобби##CharBack", ImVec2(170.0f, 0.0f))) {
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.45f, 0.85f, 1.0f));
+    if (ImGui::Button("<- В Лобби##CharBack", ImVec2(170.0f, 26.0f))) {
         currentScreen = ScreenState::Lobby;
     }
     ImGui::PopStyleColor();
-    ImGui::Separator(); 
-}
+    ImGui::Separator();
+    ImGui::Spacing();
 
-// =============================================================================
-// БОЕВАЯ СИСТЕМА И ЭКРАН БОЯ
-// =============================================================================
+    // =========================================================================
+    // 1. ГАЛЕРЕЯ ПОРТРЕТОВ ПЕРСОНАЖЕЙ (ПОРТРЕТЫ С АВАТАРАМИ)
+    // =========================================================================
+    ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "ГЕРОИ ОТРЯДА (Кликните по портрету для выбора):");
+    ImGui::Spacing();
+
+    float galleryHeight = 145.0f;
+    ImGui::BeginChild("CharacterPortraitGallery", ImVec2(0, galleryHeight), true, ImGuiWindowFlags_HorizontalScrollbar);
+
+    for (size_t i = 0; i < reserve.size(); ++i) {
+        auto ch = reserve[i];
+        if (!ch) continue;
+        ImGui::PushID(static_cast<int>(i));
+
+        bool isSelected = (i == selectedEditorCharIndex);
+        bool inSquad = false;
+        for (const auto& slot : playerProfile.getActiveSquad()) {
+            if (slot == ch) { inSquad = true; break; }
+        }
+
+        ImVec4 borderCol = isSelected ? ImVec4(1.0f, 0.85f, 0.25f, 1.0f) : ImVec4(0.35f, 0.40f, 0.50f, 0.6f);
+        ImVec4 bgCol = isSelected ? ImVec4(0.18f, 0.24f, 0.34f, 0.95f) : ImVec4(0.08f, 0.10f, 0.15f, 0.75f);
+
+        ImGui::PushStyleColor(ImGuiCol_Border, borderCol);
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, bgCol);
+        ImGui::BeginChild("PortraitCard", ImVec2(115.0f, 122.0f), true, ImGuiWindowFlags_NoScrollbar);
+
+        auto itPort = characterPortraits.find(ch->getId());
+        if (itPort != characterPortraits.end() && itPort->second.getNativeHandle() != 0) {
+            ImTextureID tex = (ImTextureID)(uintptr_t)itPort->second.getNativeHandle();
+            if (ImGui::ImageButton(tex, ImVec2(95.0f, 62.0f))) {
+                selectedEditorCharIndex = i;
+            }
+        } else {
+            if (ImGui::Button(ch->getName().c_str(), ImVec2(95.0f, 62.0f))) {
+                selectedEditorCharIndex = i;
+            }
+        }
+
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s (Уровень %d)", ch->getName().c_str(), ch->getLevel());
+        }
+
+        ImGui::TextColored(isSelected ? ImVec4(1.0f, 0.90f, 0.35f, 1.0f) : ImVec4(0.9f, 0.9f, 0.9f, 1.0f),
+                           "%s", ch->getName().c_str());
+        if (inSquad) {
+            ImGui::TextColored(ImVec4(0.35f, 1.0f, 0.45f, 1.0f), "* В отряде");
+        } else {
+            ImGui::TextDisabled("Ур. %d", ch->getLevel());
+        }
+
+        ImGui::EndChild();
+        ImGui::PopStyleColor(2);
+
+        ImGui::SameLine(0.0f, 10.0f);
+        ImGui::PopID();
+    }
+    ImGui::EndChild();
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // =========================================================================
+    // 2. СКОМПАКТИРОВАННАЯ ЗОНА: СЛОТЫ ПРИДВИНУТЫ БЛИЖЕ К ЦЕНТРУ, ЦЕНТР УЖЕ
+    // =========================================================================
+                float availW = ImGui::GetContentRegionAvail().x;
+
+    // Центрирование всего интерфейса редактора по горизонтали
+    float totalW = std::clamp(availW, 900.0f, 1220.0f);
+    float startX = (availW - totalW) * 0.5f;
+    if (startX > 0.0f) {
+        ImGui::SetCursorPosX(startX);
+    }
+
+    ImGui::BeginGroup();
+
+    // Правая панель характеристик: более узкая (275px)
+    float rightPanelW = 275.0f;
+    float leftAreaW = totalW - rightPanelW - 15.0f;
+
+    // ГЛАВНЫЙ РАЗДЕЛИТЕЛЬ НА 2 СТОЛБЦА
+    ImGui::Columns(2, "CharacterEditorTwoMainColumns", false);
+    ImGui::SetColumnWidth(0, leftAreaW);
+    ImGui::SetColumnWidth(1, rightPanelW);
+
+    auto& db = GameDatabase::getInstance();
+
+    auto renderSlotCard = [&](const char* slotTitle, ArtifactType slotType, const std::string& currentItemId, const char* iconKey) {
+        ImGui::PushID(slotTitle);
+
+        ImVec4 borderCol = currentItemId.empty() ? ImVec4(0.35f, 0.40f, 0.50f, 0.6f) : ImVec4(0.85f, 0.70f, 0.25f, 0.9f);
+        ImVec4 bgCol = ImVec4(0.09f, 0.11f, 0.17f, 0.85f);
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, bgCol);
+        ImGui::PushStyleColor(ImGuiCol_Border, borderCol);
+        ImGui::BeginChild("SlotBox", ImVec2(0, 96.0f), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.35f, 1.0f), "%s", slotTitle);
+        ImGui::Separator();
+
+        // Иконка слота
+        auto itSlotTex = slotIconTextures.find(iconKey);
+        if (itSlotTex != slotIconTextures.end() && itSlotTex->second.getNativeHandle() != 0) {
+            ImTextureID slotTexId = (ImTextureID)(uintptr_t)itSlotTex->second.getNativeHandle();
+            ImGui::Image(slotTexId, ImVec2(44.0f, 44.0f));
+            ImGui::SameLine(0.0f, 10.0f);
+        }
+
+        ImGui::BeginGroup();
+        if (currentItemId.empty()) {
+            ImGui::TextDisabled("Пустой слот");
+            ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.0f, 0.85f), "Нажмите, чтобы надеть");
+        } else {
+            if (slotType == ArtifactType::Weapon) {
+                auto itW = db.weapons.find(currentItemId);
+                if (itW != db.weapons.end()) {
+                    ImGui::TextColored(ImVec4(0.35f, 0.85f, 1.0f, 1.0f), "%s", itW->second->getName().c_str());
+                    ImGui::TextDisabled("Урон: +%.0f", itW->second->getDamageAtLevel(currentChar->getLevel()));
+                }
+            } else {
+                auto itA = db.artifacts.find(currentItemId);
+                if (itA != db.artifacts.end()) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.80f, 0.35f, 1.0f), "%s", itA->second->getName().c_str());
+                    if (!itA->second->getSetId().empty()) {
+                        auto itSet = db.artifactSets.find(itA->second->getSetId());
+                        if (itSet != db.artifactSets.end()) {
+                            ImGui::TextColored(ImVec4(0.50f, 0.95f, 0.55f, 1.0f), "Сет: %s", itSet->second.name.c_str());
+                        }
+                    }
+                }
+            }
+            ImGui::TextColored(ImVec4(0.65f, 0.70f, 0.80f, 0.8f), "Нажмите для смены");
+        }
+        ImGui::EndGroup();
+
+        ImGui::EndChild();
+        ImGui::PopStyleColor(2);
+
+        // Вся область слота является кликабельной кнопкой
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                activeSlotPicker = slotType;
+                requestOpenSlotPicker = true;
+            }
+        }
+
+        ImGui::Spacing();
+        ImGui::PopID();
+    };
+
+    // =========================================================================
+    // ЛЕВЫЙ СТОЛБЕЦ: СНАРЯЖЕНИЕ И ВИЗУАЛ ГЕРОЯ (РАЗБИТ НА 3 СУБКОЛОНКИ)
+    // =========================================================================
+    float colW1 = 205.0f;
+    float colW3 = 205.0f;
+    float colW2 = leftAreaW - colW1 - colW3 - 25.0f;
+
+    ImGui::Columns(3, "EditorLeftSlotsModelGrid", false);
+    ImGui::SetColumnWidth(0, colW1);
+    ImGui::SetColumnWidth(1, colW2);
+    ImGui::SetColumnWidth(2, colW3);
+
+    // Подколонка 0: Оружие, Шлем, Костюм
+    ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Оружие и броня:");
+    ImGui::Spacing();
+    renderSlotCard("Слот оружия", ArtifactType::Weapon, currentChar->getEquippedWeapon(), "slot_weapon");
+    renderSlotCard("Головной убор", ArtifactType::Headgear, currentChar->getEquippedHeadgear(), "slot_headgear");
+    renderSlotCard("Костюм / Доспех", ArtifactType::Costume, currentChar->getEquippedCostume(), "slot_costume");
+
+    ImGui::NextColumn();
+
+    // Подколонка 1: Витрина героя с моделью, уровнем, отрядом и навыками
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.09f, 0.14f, 0.85f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.85f, 0.70f, 0.25f, 0.85f));
+    ImGui::BeginChild("CenterCharacterShowcase", ImVec2(0, 520.0f), true, ImGuiWindowFlags_NoScrollbar);
+
+    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.25f, 1.0f), "Герой: %s", currentChar->getName().c_str());
+    ImGui::TextDisabled("Уровень: %d", currentChar->getLevel());
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // Процедурная модель героя
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 previewCenter = ImGui::GetCursorScreenPos();
+    previewCenter.x += (colW2 * 0.5f) - 10.0f;
+    previewCenter.y += 65.0f;
+
+    float animTime = static_cast<float>(ImGui::GetTime());
+    renderAnimatedHeroModel(drawList, previewCenter, currentChar->getId(), true, animTime, 1.35f);
+
+    ImGui::Dummy(ImVec2(0, 130.0f));
+
+    // Управление участием в отряде
+    bool inActiveSquad = false;
+    size_t activeSquadSlot = 0;
+    for (size_t s = 0; s < 3; ++s) {
+        if (playerProfile.getActiveSquad()[s] == currentChar) {
+            inActiveSquad = true;
+            activeSquadSlot = s;
+            break;
+        }
+    }
+
+    if (inActiveSquad) {
+        ImGui::TextColored(ImVec4(0.35f, 1.0f, 0.45f, 1.0f), "В боевом отряде (Слот %d)", static_cast<int>(activeSquadSlot + 1));
+        if (ImGui::Button("Убрать из отряда##RemoveSq", ImVec2(220.0f, 26.0f))) {
+            playerProfile.removeFromSquad(activeSquadSlot);
+        }
+    } else {
+        ImGui::TextDisabled("Назначить в отряд:");
+        if (ImGui::Button("Поставить в отряд##AddSq", ImVec2(220.0f, 26.0f))) {
+            bool placed = false;
+            for (size_t s = 0; s < 3; ++s) {
+                if (playerProfile.getActiveSquad()[s] == nullptr) {
+                    playerProfile.setSquadSlotDirectly(s, currentChar);
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed) {
+                playerProfile.setSquadSlotDirectly(0, currentChar);
+            }
+        }
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // Способности героя (без текстовых тегов)
+    auto charTmplIt = db.characters.find(currentChar->getId());
+    if (charTmplIt != db.characters.end()) {
+        ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Способности героя:");
+        const auto& skills = charTmplIt->second->getSkills();
+        for (size_t sk = 0; sk < skills.size(); ++sk) {
+            std::string skTag = (sk == 0) ? "Базовая атака: " : (sk == 1) ? "Навык: " : "Ультимейт: ";
+            ImGui::TextColored(ImVec4(0.95f, 0.90f, 0.70f, 1.0f), "%s%s", skTag.c_str(), skills[sk]->getName().c_str());
+            if (!skills[sk]->getDescription().empty()) {
+                ImGui::TextDisabled("  %s", skills[sk]->getDescription().c_str());
+            }
+        }
+    }
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+
+    ImGui::NextColumn();
+
+    // Подколонка 2: Амулет, Кольцо, и Сеты артефактов
+    ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Бижутерия и сеты:");
+    ImGui::Spacing();
+    renderSlotCard("Талисман", ArtifactType::Amulet, currentChar->getEquippedAmulet(), "slot_amulet");
+    renderSlotCard("Перстень", ArtifactType::Ring, currentChar->getEquippedRing(), "slot_ring");
+
+    // Панель комплектов артефактов
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.10f, 0.15f, 0.85f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.40f, 0.70f, 0.50f, 0.80f));
+    ImGui::BeginChild("ArtifactSetsPanel", ImVec2(0, 275.0f), true, ImGuiWindowFlags_NoScrollbar);
+
+    ImGui::TextColored(ImVec4(0.45f, 0.95f, 0.55f, 1.0f), "Бонусы комплектов:");
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    auto setCounts = currentChar->getActiveSetCounts();
+    if (setCounts.empty()) {
+        ImGui::TextDisabled("Сеты артефактов не активированы.");
+        ImGui::Spacing();
+        ImGui::TextDisabled("Экипируйте 2 или 4 предмета одного сета для получения пассивных бонусов.");
+    } else {
+        for (const auto& [setId, count] : setCounts) {
+            auto itSet = db.artifactSets.find(setId);
+            if (itSet == db.artifactSets.end()) continue;
+
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.35f, 1.0f), "«%s» (%d/4):", itSet->second.name.c_str(), count);
+            if (count >= 2) {
+                ImGui::TextColored(ImVec4(0.35f, 1.0f, 0.45f, 1.0f), " (2/4) Активно: %s", itSet->second.twoPieceDesc.c_str());
+            } else {
+                ImGui::TextDisabled(" (2/4) Не активно: %s (требуется еще %d)", itSet->second.twoPieceDesc.c_str(), 2 - count);
+            }
+            if (count >= 4) {
+                ImGui::TextColored(ImVec4(0.35f, 1.0f, 0.45f, 1.0f), " (4/4) Активно: %s", itSet->second.fourPieceDesc.c_str());
+            } else {
+                ImGui::TextDisabled(" (4/4) Не активно: %s (требуется еще %d)", itSet->second.fourPieceDesc.c_str(), 4 - count);
+            }
+            ImGui::Spacing();
+        }
+    }
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+
+    ImGui::Columns(1); // Завершаем подколонки слотов
+
+    // =========================================================================
+    // ПРАВЫЙ СТОЛБЕЦ: ИТОГОВЫЕ ХАРАКТЕРИСТИКИ (УЗКАЯ ПАНЕЛЬ БЕЗ СПИСКА АРТЕФАКТОВ И ТЕГОВ)
+    // =========================================================================
+    ImGui::NextColumn();
+
+    StatArray totalStats = currentChar->getTotalStats();
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.10f, 0.16f, 0.95f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.35f, 0.70f, 0.95f, 0.95f));
+    ImGui::BeginChild("CharacterTotalStatsPanelLarge", ImVec2(0, 520.0f), true, ImGuiWindowFlags_NoScrollbar);
+
+    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.30f, 1.0f), "=== ХАРАКТЕРИСТИКИ ===");
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    ImGui::TextColored(ImVec4(0.95f, 0.90f, 0.60f, 1.0f), "Герой: %s", currentChar->getName().c_str());
+    ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Уровень героя: %d", currentChar->getLevel());
+    ImGui::Spacing();
+
+    // Здоровье и Мана
+    ImGui::TextColored(ImVec4(0.35f, 1.0f, 0.45f, 1.0f), "Здоровье (HP): %.0f", totalStats[StatIndex::HP]);
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.25f, 0.85f, 0.40f, 1.0f));
+    ImGui::ProgressBar(1.0f, ImVec2(-1.0f, 14.0f), "");
+    ImGui::PopStyleColor();
+
+    ImGui::TextColored(ImVec4(0.35f, 0.80f, 1.0f, 1.0f), "Запас маны: %.0f", totalStats[StatIndex::Mana]);
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4(0.20f, 0.55f, 0.95f, 1.0f));
+    ImGui::ProgressBar(1.0f, ImVec2(-1.0f, 14.0f), "");
+    ImGui::PopStyleColor();
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // Боевые параметры (без текстовых тегов в скобках)
+    ImGui::TextColored(ImVec4(1.0f, 0.65f, 0.30f, 1.0f), "Сила атаки: %.1f", totalStats[StatIndex::Attack]);
+
+    double mitigation = (totalStats[StatIndex::Defense] / (totalStats[StatIndex::Defense] + 100.0)) * 100.0;
+    ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Защита: %.1f (-%.1f%%)", totalStats[StatIndex::Defense], mitigation);
+
+    ImGui::Text("Крит. шанс: %.1f%%", totalStats[StatIndex::CritChance] * 100.0);
+    ImGui::Text("Крит. урон: %.0f%%", totalStats[StatIndex::CritDamage] * 100.0);
+    ImGui::Text("Вампиризм: %.1f%%", totalStats[StatIndex::Vampirism] * 100.0);
+    ImGui::Text("Бонус умений: +%.1f%%", totalStats[StatIndex::DamageBonus] * 100.0);
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    // Расчетный боевой рейтинг
+    int powerScore = static_cast<int>(
+        totalStats[StatIndex::HP] * 0.2 +
+        totalStats[StatIndex::Mana] * 0.15 +
+        totalStats[StatIndex::Attack] * 2.5 +
+        totalStats[StatIndex::Defense] * 2.0 +
+        totalStats[StatIndex::CritChance] * 250.0 +
+        totalStats[StatIndex::DamageBonus] * 120.0
+    );
+    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.25f, 1.0f), "Боевая мощь героя: %d", powerScore);
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+
+    ImGui::Columns(1); // Завершаем главный сплит
+
+    ImGui::EndGroup(); // Завершаем центрированную группу
+
+    renderSlotPickerModal(currentChar);
+}
 
 void ScreenManager::logCombat(const std::string& msg, const ImVec4& color) {
     combatLog.push_back({ msg, color });
@@ -2709,11 +4056,10 @@ void ScreenManager::initCombatState() {
 
     auto& dbChars = GameDatabase::getInstance().characters;
 
-    // Если список пуст, берем активный отряд игрока
-    if (activeCombatPlayerSquad.empty()) {
-        for (const auto& slot : playerProfile.getActiveSquad()) {
-            if (slot) activeCombatPlayerSquad.push_back(slot->getId());
-        }
+    // Всегда берем текущий актуальный активный отряд игрока
+    activeCombatPlayerSquad.clear();
+    for (const auto& slot : playerProfile.getActiveSquad()) {
+        if (slot) activeCombatPlayerSquad.push_back(slot->getId());
     }
     if (activeCombatPlayerSquad.empty()) {
         activeCombatPlayerSquad = { "adeir", "renwick", "garosh" };
@@ -2860,74 +4206,45 @@ void ScreenManager::processPlayerSkill(size_t skillIndex) {
                    skillName.find("свет") != std::string::npos || skillName.find("Свет") != std::string::npos ||
                    skillName.find("исцел") != std::string::npos || skillName.find("Исцел") != std::string::npos);
 
-    if (isShield) {
-        hero.shield += rawValue;
-        logCombat(hero.name + " активирует '" + skillName + "' и накладывает щит: +" + std::to_string(static_cast<int>(rawValue)) + "!", ImVec4(0.3f, 0.8f, 1.0f, 1.0f));
-    } else if (isHeal) {
-        double healed = std::min(hero.maxHp - hero.currentHp, rawValue);
-        hero.currentHp = std::min(hero.maxHp, hero.currentHp + rawValue);
-        logCombat(hero.name + " применяет '" + skillName + "' и восстанавливает +" + std::to_string(static_cast<int>(healed)) + " HP!", ImVec4(0.3f, 1.0f, 0.4f, 1.0f));
-    } else {
-        auto& target = combatEnemies[selectedEnemyTarget];
-
-        bool isCrit = ((rand() % 1000) / 1000.0) < hero.stats[StatIndex::CritChance];
-        double critMult = isCrit ? hero.stats[StatIndex::CritDamage] : 1.0;
-        double dmgBonus = 1.0 + hero.stats[StatIndex::DamageBonus];
-        double totalDmg = rawValue * critMult * dmgBonus;
-
-        double netDmg = std::max(1.0, totalDmg - (target.defense * 0.4));
-        if (target.shield > 0.0) {
-            double absorbed = std::min(target.shield, netDmg);
-            target.shield -= absorbed;
-            netDmg -= absorbed;
-        }
-        target.currentHp = std::max(0.0, target.currentHp - netDmg);
-
-        if (hero.stats[StatIndex::Vampirism] > 0.0 && netDmg > 0.0) {
-            double vampHeal = netDmg * hero.stats[StatIndex::Vampirism];
-            hero.currentHp = std::min(hero.maxHp, hero.currentHp + vampHeal);
-        }
-
-        std::string critPrefix = isCrit ? "[КРИТ!] " : "";
-        ImVec4 logColor = isCrit ? ImVec4(1.0f, 0.45f, 0.1f, 1.0f) : ImVec4(0.95f, 0.95f, 0.35f, 1.0f);
-        logCombat(critPrefix + hero.name + " наносит '" + skillName + "' по " + target.name + " (-" + std::to_string(static_cast<int>(netDmg)) + " HP)!", logColor);
-
-        if (!target.isAlive()) {
-            logCombat("[ПОБЕЖДЕН] " + target.name + " повержен!", ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
-        }
-    }
-
+    // Управление стаками и КД
     if (skill->getConsumesAllStacks()) {
         hero.skillStacks = 0;
     } else if (skill->getStacksGranted() > 0) {
         hero.skillStacks += skill->getStacksGranted();
     }
-
     hero.skillCooldowns[skillIndex] = skill->getCooldown();
 
-    // Проверка победы
-    bool anyEnemyAlive = false;
-    for (const auto& e : combatEnemies) {
-        if (e.isAlive()) { anyEnemyAlive = true; break; }
-    }
+    if (isShield) {
+        hero.shield += rawValue;
+        logCombat(hero.name + " активирует '" + skillName + "' и накладывает щит: +" + std::to_string(static_cast<int>(rawValue)) + "!", ImVec4(0.3f, 0.8f, 1.0f, 1.0f));
+        executeEnemyTurn();
+    } else if (isHeal) {
+        double healed = std::min(hero.maxHp - hero.currentHp, rawValue);
+        hero.currentHp = std::min(hero.maxHp, hero.currentHp + rawValue);
+        logCombat(hero.name + " применяет '" + skillName + "' и восстанавливает +" + std::to_string(static_cast<int>(healed)) + " HP!", ImVec4(0.3f, 1.0f, 0.4f, 1.0f));
+        executeEnemyTurn();
+    } else {
+        auto& target = combatEnemies[selectedEnemyTarget];
+        bool isCrit = ((rand() % 1000) / 1000.0) < hero.stats[StatIndex::CritChance];
+        double critMult = isCrit ? hero.stats[StatIndex::CritDamage] : 1.0;
+        double dmgBonus = 1.0 + hero.stats[StatIndex::DamageBonus];
+        double totalDmg = rawValue * critMult * dmgBonus;
+        double netDmg = std::max(1.0, totalDmg - (target.defense * 0.4));
 
-    if (!anyEnemyAlive) {
-        combatPhase = CombatPhase::Victory;
-        logCombat("=== ПОБЕДА! Все противники повержены! ===", ImVec4(0.3f, 1.0f, 0.3f, 1.0f));
-        return;
+        // Запуск визуальной анимации атаки и применения эффектов
+        combatAnim.isPlaying = true;
+        combatAnim.isHero = true;
+        combatAnim.attackerId = hero.id;
+        combatAnim.heroIndex = activeCharacterIndex;
+        combatAnim.targetIndex = static_cast<size_t>(selectedEnemyTarget);
+        combatAnim.skillIndex = skillIndex;
+        combatAnim.timer = 0.0f;
+        combatAnim.duration = 0.85f;
+        combatAnim.damage = netDmg;
+        combatAnim.isCrit = isCrit;
+        combatAnim.damageApplied = false;
+        combatAnim.skillName = skillName;
     }
-
-    // Если цель погибла, переключаем на следующего живого
-    if (selectedEnemyTarget >= 0 && !combatEnemies[selectedEnemyTarget].isAlive()) {
-        for (size_t i = 0; i < combatEnemies.size(); ++i) {
-            if (combatEnemies[i].isAlive()) {
-                selectedEnemyTarget = static_cast<int>(i);
-                break;
-            }
-        }
-    }
-
-    executeEnemyTurn();
 }
 
 void ScreenManager::executeEnemyTurn() {
@@ -3094,6 +4411,542 @@ void ScreenManager::endCombatTurn() {
     logCombat("--- Раунд " + std::to_string(combatTurnNumber) + ": Ваш ход ---", ImVec4(0.35f, 0.85f, 1.0f, 1.0f));
 }
 
+
+// =============================================================================
+
+static void drawEllipseFilled(ImDrawList* drawList, const ImVec2& center, float rx, float ry, ImU32 col, int num_segments = 16) {
+    std::vector<ImVec2> pts;
+    pts.reserve(num_segments);
+    for (int i = 0; i < num_segments; ++i) {
+        float a = (static_cast<float>(i) / static_cast<float>(num_segments)) * 6.2831853f;
+        pts.push_back(ImVec2(center.x + cosf(a) * rx, center.y + sinf(a) * ry));
+    }
+    drawList->AddConvexPolyFilled(pts.data(), static_cast<int>(pts.size()), col);
+}
+
+static void drawEllipse(ImDrawList* drawList, const ImVec2& center, float rx, float ry, ImU32 col, int num_segments = 16, float thickness = 1.0f) {
+    std::vector<ImVec2> pts;
+    pts.reserve(num_segments);
+    for (int i = 0; i < num_segments; ++i) {
+        float a = (static_cast<float>(i) / static_cast<float>(num_segments)) * 6.2831853f;
+        pts.push_back(ImVec2(center.x + cosf(a) * rx, center.y + sinf(a) * ry));
+    }
+    drawList->AddPolyline(pts.data(), static_cast<int>(pts.size()), col, ImDrawFlags_Closed, thickness);
+}
+
+static void drawArc(ImDrawList* drawList, const ImVec2& center, float radius, float a_min, float a_max, ImU32 col, int num_segments = 16, float thickness = 1.0f) {
+    std::vector<ImVec2> pts;
+    pts.reserve(num_segments + 1);
+    for (int i = 0; i <= num_segments; ++i) {
+        float a = a_min + (static_cast<float>(i) / static_cast<float>(num_segments)) * (a_max - a_min);
+        pts.push_back(ImVec2(center.x + cosf(a) * radius, center.y + sinf(a) * radius));
+    }
+    drawList->AddPolyline(pts.data(), static_cast<int>(pts.size()), col, ImDrawFlags_None, thickness);
+}
+
+// ПРОЦЕДУРНЫЕ АНИМИРОВАННЫЕ МОДЕЛИ БОЯ (ГЕРОИ И ПРОТИВНИКИ)
+// =============================================================================
+
+void ScreenManager::renderAnimatedHeroModel(ImDrawList* drawList, const ImVec2& center, const std::string& charId, bool isActive, float animTime, float scale) {
+    float bob = sinf(animTime * 3.5f + (isActive ? 0.0f : 1.2f)) * 4.5f * scale;
+    float breath = sinf(animTime * 2.5f) * 1.5f * scale;
+    ImVec2 pos = ImVec2(center.x, center.y + bob);
+
+    // 1. Тень под ногами
+    drawEllipseFilled(drawList, ImVec2(center.x, center.y + 40.0f * scale), 26.0f * scale, 9.0f * scale, IM_COL32(0, 0, 0, 115));
+
+    // 2. Свечение активного героя
+    if (isActive) {
+        float p = sinf(animTime * 4.0f) * 0.25f + 0.75f;
+        drawList->AddCircle(ImVec2(center.x, center.y + 40.0f * scale), 30.0f * scale, IM_COL32(255, 215, 60, (int)(160 * p)), 32, 2.5f);
+        drawList->AddCircleFilled(ImVec2(pos.x, pos.y), 34.0f * scale, IM_COL32(255, 220, 80, (int)(35 * p)), 24);
+    }
+
+    // 3. Индивидуальные цвета и детали для ВСЕХ 20 ПЕРСОНАЖЕЙ
+    ImU32 bodyCol = IM_COL32(65, 75, 95, 255);
+    ImU32 trimCol = IM_COL32(180, 195, 225, 255);
+    ImU32 eyeCol  = IM_COL32(255, 225, 100, 255);
+
+    if (charId == "adeir") {
+        bodyCol = IM_COL32(150, 40, 25, 255); trimCol = IM_COL32(255, 140, 40, 255); eyeCol = IM_COL32(255, 210, 50, 255);
+    } else if (charId == "renwick") {
+        bodyCol = IM_COL32(45, 65, 110, 255); trimCol = IM_COL32(160, 210, 255, 255); eyeCol = IM_COL32(120, 220, 255, 255);
+    } else if (charId == "garosh") {
+        bodyCol = IM_COL32(50, 50, 56, 255); trimCol = IM_COL32(195, 195, 205, 255); eyeCol = IM_COL32(255, 110, 45, 255);
+    } else if (charId == "vex") {
+        bodyCol = IM_COL32(28, 75, 40, 255); trimCol = IM_COL32(100, 230, 130, 255); eyeCol = IM_COL32(140, 255, 180, 255);
+    } else if (charId == "kaelim") {
+        bodyCol = IM_COL32(40, 18, 52, 255); trimCol = IM_COL32(210, 90, 255, 255); eyeCol = IM_COL32(230, 130, 255, 255);
+    } else if (charId == "velari") {
+        bodyCol = IM_COL32(30, 70, 75, 255); trimCol = IM_COL32(100, 245, 225, 255); eyeCol = IM_COL32(160, 255, 245, 255);
+    } else if (charId == "tauros") {
+        bodyCol = IM_COL32(75, 20, 25, 255); trimCol = IM_COL32(255, 80, 80, 255); eyeCol = IM_COL32(255, 230, 80, 255);
+    } else if (charId == "lumien") {
+        bodyCol = IM_COL32(70, 62, 25, 255); trimCol = IM_COL32(255, 225, 80, 255); eyeCol = IM_COL32(255, 245, 150, 255);
+    } else if (charId == "silas") {
+        bodyCol = IM_COL32(32, 18, 42, 255); trimCol = IM_COL32(160, 80, 240, 255); eyeCol = IM_COL32(70, 245, 130, 255);
+    } else if (charId == "finn") {
+        bodyCol = IM_COL32(60, 45, 25, 255); trimCol = IM_COL32(240, 180, 75, 255); eyeCol = IM_COL32(255, 220, 120, 255);
+    } else if (charId == "elix") {
+        bodyCol = IM_COL32(25, 60, 50, 255); trimCol = IM_COL32(85, 240, 170, 255); eyeCol = IM_COL32(120, 255, 200, 255);
+    } else if (charId == "tork") {
+        bodyCol = IM_COL32(60, 42, 28, 255); trimCol = IM_COL32(240, 145, 55, 255); eyeCol = IM_COL32(255, 180, 70, 255);
+    } else if (charId == "mira") {
+        bodyCol = IM_COL32(25, 45, 75, 255); trimCol = IM_COL32(120, 220, 255, 255); eyeCol = IM_COL32(180, 240, 255, 255);
+    } else if (charId == "roland") {
+        bodyCol = IM_COL32(50, 32, 60, 255); trimCol = IM_COL32(225, 155, 250, 255); eyeCol = IM_COL32(245, 180, 255, 255);
+    } else if (charId == "born") {
+        bodyCol = IM_COL32(55, 45, 32, 255); trimCol = IM_COL32(210, 170, 100, 255); eyeCol = IM_COL32(255, 200, 80, 255);
+    } else if (charId == "mortis") {
+        bodyCol = IM_COL32(26, 22, 34, 255); trimCol = IM_COL32(150, 65, 195, 255); eyeCol = IM_COL32(70, 220, 255, 255);
+    } else if (charId == "siegfried") {
+        bodyCol = IM_COL32(65, 30, 22, 255); trimCol = IM_COL32(255, 145, 60, 255); eyeCol = IM_COL32(255, 215, 80, 255);
+    } else if (charId == "sylvana") {
+        bodyCol = IM_COL32(25, 55, 45, 255); trimCol = IM_COL32(115, 240, 190, 255); eyeCol = IM_COL32(160, 255, 220, 255);
+    } else if (charId == "drake") {
+        bodyCol = IM_COL32(32, 45, 60, 255); trimCol = IM_COL32(105, 190, 250, 255); eyeCol = IM_COL32(255, 215, 90, 255);
+    } else if (charId == "cormac") {
+        bodyCol = IM_COL32(32, 52, 28, 255); trimCol = IM_COL32(150, 230, 90, 255); eyeCol = IM_COL32(190, 255, 120, 255);
+    }
+
+    // 4. Силуэт тела (Мантия / Кираса / Ловкий костюм)
+    bool isRobe = (charId == "adeir" || charId == "mira" || charId == "silas" || charId == "velari" || charId == "elix" || charId == "cormac");
+    bool isHeavy = (charId == "garosh" || charId == "tauros" || charId == "born" || charId == "mortis" || charId == "lumien" || charId == "siegfried");
+
+    if (isRobe) {
+        drawList->AddTriangleFilled(
+            ImVec2(pos.x, pos.y - 18.0f * scale),
+            ImVec2(pos.x - (19.0f + breath) * scale, pos.y + 36.0f * scale),
+            ImVec2(pos.x + (19.0f + breath) * scale, pos.y + 36.0f * scale),
+            bodyCol);
+        drawList->AddTriangle(
+            ImVec2(pos.x, pos.y - 18.0f * scale),
+            ImVec2(pos.x - (19.0f + breath) * scale, pos.y + 36.0f * scale),
+            ImVec2(pos.x + (19.0f + breath) * scale, pos.y + 36.0f * scale),
+            trimCol, 2.0f);
+    } else if (isHeavy) {
+        drawList->AddRectFilled(
+            ImVec2(pos.x - (23.0f + breath) * scale, pos.y - 16.0f * scale),
+            ImVec2(pos.x + (23.0f + breath) * scale, pos.y + 34.0f * scale),
+            bodyCol, 6.0f * scale);
+        drawList->AddRect(
+            ImVec2(pos.x - (23.0f + breath) * scale, pos.y - 16.0f * scale),
+            ImVec2(pos.x + (23.0f + breath) * scale, pos.y + 34.0f * scale),
+            trimCol, 6.0f * scale, 0, 2.5f);
+    } else {
+        drawList->AddQuadFilled(
+            ImVec2(pos.x - 16.0f * scale, pos.y - 16.0f * scale),
+            ImVec2(pos.x + 16.0f * scale, pos.y - 16.0f * scale),
+            ImVec2(pos.x + (18.0f + breath) * scale, pos.y + 32.0f * scale),
+            ImVec2(pos.x - (18.0f + breath) * scale, pos.y + 32.0f * scale),
+            bodyCol);
+        drawList->AddQuad(
+            ImVec2(pos.x - 16.0f * scale, pos.y - 16.0f * scale),
+            ImVec2(pos.x + 16.0f * scale, pos.y - 16.0f * scale),
+            ImVec2(pos.x + (18.0f + breath) * scale, pos.y + 32.0f * scale),
+            ImVec2(pos.x - (18.0f + breath) * scale, pos.y + 32.0f * scale),
+            trimCol, 2.0f);
+    }
+
+    // 5. Голова
+    drawList->AddCircleFilled(ImVec2(pos.x, pos.y - 26.0f * scale), 12.0f * scale, bodyCol);
+    drawList->AddCircle(ImVec2(pos.x, pos.y - 26.0f * scale), 12.0f * scale, trimCol, 24, 2.0f);
+
+    // Глаза
+    drawEllipseFilled(drawList, ImVec2(pos.x + 4.0f * scale, pos.y - 27.0f * scale), 3.0f * scale, 2.0f * scale, eyeCol);
+    drawEllipseFilled(drawList, ImVec2(pos.x + 9.0f * scale, pos.y - 27.0f * scale), 3.0f * scale, 2.0f * scale, eyeCol);
+
+    // 6. УНИКАЛЬНЫЕ АКСЕССУАРЫ ДЛЯ КАЖДОГО ПЕРСОНАЖА
+    if (charId == "adeir") {
+        // Посох огня со сферой и искрами
+        float sBob = sinf(animTime * 4.0f) * 3.0f * scale;
+        ImVec2 sTop = ImVec2(pos.x + 24.0f * scale, pos.y - (28.0f + sBob) * scale);
+        drawList->AddLine(sTop, ImVec2(pos.x + 18.0f * scale, pos.y + 36.0f * scale), IM_COL32(140, 95, 55, 255), 3.0f * scale);
+        drawList->AddCircleFilled(sTop, 7.5f * scale, IM_COL32(255, 120, 30, 255));
+        drawList->AddCircle(sTop, 9.5f * scale, IM_COL32(255, 230, 100, 200), 16, 1.5f);
+    } else if (charId == "renwick") {
+        // Плюмаж на шлеме и широкий меч
+        drawList->AddLine(ImVec2(pos.x, pos.y - 38.0f * scale), ImVec2(pos.x - 8.0f * scale, pos.y - 48.0f * scale), IM_COL32(70, 140, 255, 255), 4.0f * scale);
+        drawList->AddLine(ImVec2(pos.x + 18.0f * scale, pos.y + 10.0f * scale), ImVec2(pos.x + 28.0f * scale, pos.y - 26.0f * scale), IM_COL32(220, 235, 255, 255), 3.5f * scale);
+    } else if (charId == "garosh") {
+        // Огромный ростовой щит с шипами
+        ImVec2 sC = ImVec2(pos.x - 24.0f * scale, pos.y + 8.0f * scale);
+        drawList->AddRectFilled(ImVec2(sC.x - 10.0f * scale, sC.y - 24.0f * scale), ImVec2(sC.x + 10.0f * scale, sC.y + 24.0f * scale), IM_COL32(40, 45, 55, 255), 4.0f * scale);
+        drawList->AddRect(ImVec2(sC.x - 10.0f * scale, sC.y - 24.0f * scale), ImVec2(sC.x + 10.0f * scale, sC.y + 24.0f * scale), trimCol, 4.0f * scale, 0, 2.0f);
+        drawList->AddTriangleFilled(ImVec2(sC.x - 10.0f * scale, sC.y), ImVec2(sC.x - 18.0f * scale, sC.y - 4.0f * scale), ImVec2(sC.x - 10.0f * scale, sC.y - 8.0f * scale), trimCol);
+    } else if (charId == "vex") {
+        // Изогнутый лук и колчан
+        drawList->AddLine(ImVec2(pos.x - 16.0f * scale, pos.y - 12.0f * scale), ImVec2(pos.x - 24.0f * scale, pos.y - 32.0f * scale), IM_COL32(140, 100, 60, 255), 4.0f * scale);
+        drawList->AddLine(ImVec2(pos.x + 20.0f * scale, pos.y - 24.0f * scale), ImVec2(pos.x + 28.0f * scale, pos.y + 24.0f * scale), IM_COL32(160, 110, 50, 255), 3.0f * scale);
+    } else if (charId == "kaelim") {
+        // Парные кинжалы с фиолетовым ядом
+        drawList->AddLine(ImVec2(pos.x + 14.0f * scale, pos.y + 4.0f * scale), ImVec2(pos.x + 26.0f * scale, pos.y + 26.0f * scale), IM_COL32(200, 90, 255, 255), 3.0f * scale);
+        drawList->AddLine(ImVec2(pos.x - 14.0f * scale, pos.y + 4.0f * scale), ImVec2(pos.x - 26.0f * scale, pos.y + 26.0f * scale), IM_COL32(200, 90, 255, 255), 3.0f * scale);
+    } else if (charId == "velari") {
+        // Золотой парящий нимб и кадуцей
+        drawEllipse(drawList, ImVec2(pos.x, pos.y - 42.0f * scale), 12.0f * scale, 4.0f * scale, IM_COL32(255, 235, 100, 255), 16, 2.0f);
+        drawList->AddLine(ImVec2(pos.x + 22.0f * scale, pos.y - 24.0f * scale), ImVec2(pos.x + 18.0f * scale, pos.y + 36.0f * scale), IM_COL32(220, 200, 100, 255), 3.0f * scale);
+        drawList->AddCircleFilled(ImVec2(pos.x + 22.0f * scale, pos.y - 24.0f * scale), 5.0f * scale, IM_COL32(100, 245, 225, 255));
+    } else if (charId == "tauros") {
+        // Рога минотавра и тяжелые боевые секиры
+        drawList->AddLine(ImVec2(pos.x - 12.0f * scale, pos.y - 30.0f * scale), ImVec2(pos.x - 26.0f * scale, pos.y - 44.0f * scale), IM_COL32(240, 230, 200, 255), 4.5f * scale);
+        drawList->AddLine(ImVec2(pos.x + 12.0f * scale, pos.y - 30.0f * scale), ImVec2(pos.x + 26.0f * scale, pos.y - 44.0f * scale), IM_COL32(240, 230, 200, 255), 4.5f * scale);
+        drawList->AddLine(ImVec2(pos.x + 20.0f * scale, pos.y + 12.0f * scale), ImVec2(pos.x + 30.0f * scale, pos.y - 22.0f * scale), IM_COL32(230, 70, 70, 255), 4.0f * scale);
+    } else if (charId == "lumien") {
+        // Солнечный молот света
+        ImVec2 hHead = ImVec2(pos.x + 26.0f * scale, pos.y - 22.0f * scale);
+        drawList->AddLine(ImVec2(pos.x + 16.0f * scale, pos.y + 24.0f * scale), hHead, IM_COL32(200, 160, 50, 255), 3.5f * scale);
+        drawList->AddRectFilled(ImVec2(hHead.x - 8.0f * scale, hHead.y - 8.0f * scale), ImVec2(hHead.x + 8.0f * scale, hHead.y + 8.0f * scale), IM_COL32(255, 225, 80, 255), 3.0f * scale);
+    } else if (charId == "silas") {
+        // Парящий зеленый череп-фамильяр
+        float sF = sinf(animTime * 4.5f) * 4.0f * scale;
+        ImVec2 skP = ImVec2(pos.x - 24.0f * scale, pos.y - (34.0f + sF) * scale);
+        drawList->AddCircleFilled(skP, 6.0f * scale, IM_COL32(60, 240, 130, 230));
+        drawList->AddCircle(skP, 8.0f * scale, IM_COL32(180, 255, 200, 180), 16, 1.5f);
+    } else if (charId == "finn") {
+        // Шляпа с золотым пером и шпага
+        drawList->AddLine(ImVec2(pos.x - 6.0f * scale, pos.y - 36.0f * scale), ImVec2(pos.x - 18.0f * scale, pos.y - 50.0f * scale), IM_COL32(255, 215, 60, 255), 3.5f * scale);
+        drawList->AddLine(ImVec2(pos.x + 14.0f * scale, pos.y + 8.0f * scale), ImVec2(pos.x + 32.0f * scale, pos.y - 12.0f * scale), IM_COL32(220, 230, 240, 255), 2.5f * scale);
+    } else if (charId == "elix") {
+        // Очки на лбу и колба с зельем
+        drawList->AddCircleFilled(ImVec2(pos.x + 22.0f * scale, pos.y + 8.0f * scale), 6.5f * scale, IM_COL32(85, 240, 170, 255));
+        drawList->AddCircle(ImVec2(pos.x + 22.0f * scale, pos.y + 8.0f * scale), 8.5f * scale, IM_COL32(240, 255, 250, 200), 16, 1.5f);
+    } else if (charId == "tork") {
+        // Паровой ранец и латунный гаечный ключ
+        drawList->AddRectFilled(ImVec2(pos.x - 26.0f * scale, pos.y - 12.0f * scale), ImVec2(pos.x - 16.0f * scale, pos.y + 16.0f * scale), IM_COL32(180, 110, 40, 255), 2.0f * scale);
+        drawList->AddLine(ImVec2(pos.x + 16.0f * scale, pos.y + 12.0f * scale), ImVec2(pos.x + 28.0f * scale, pos.y - 18.0f * scale), IM_COL32(220, 160, 50, 255), 4.0f * scale);
+    } else if (charId == "mira") {
+        // Ледяная тиара и парящие ледяные осколки
+        drawList->AddTriangleFilled(ImVec2(pos.x, pos.y - 42.0f * scale), ImVec2(pos.x - 8.0f * scale, pos.y - 34.0f * scale), ImVec2(pos.x + 8.0f * scale, pos.y - 34.0f * scale), IM_COL32(160, 235, 255, 255));
+        float iO = sinf(animTime * 3.0f) * 6.0f * scale;
+        drawList->AddCircleFilled(ImVec2(pos.x + 26.0f * scale, pos.y - (10.0f + iO) * scale), 4.0f * scale, IM_COL32(140, 225, 255, 255));
+    } else if (charId == "roland") {
+        // Красная роза на лацкане и рапира
+        drawList->AddCircleFilled(ImVec2(pos.x - 6.0f * scale, pos.y + 4.0f * scale), 3.5f * scale, IM_COL32(220, 30, 60, 255));
+        drawList->AddLine(ImVec2(pos.x + 14.0f * scale, pos.y + 8.0f * scale), ImVec2(pos.x + 30.0f * scale, pos.y - 18.0f * scale), IM_COL32(230, 235, 245, 255), 2.5f * scale);
+    } else if (charId == "born") {
+        // Парящие каменные глыбы над плечами
+        drawList->AddRectFilled(ImVec2(pos.x - 28.0f * scale, pos.y - 14.0f * scale), ImVec2(pos.x - 18.0f * scale, pos.y - 4.0f * scale), IM_COL32(140, 120, 95, 255), 2.0f * scale);
+        drawList->AddRectFilled(ImVec2(pos.x + 18.0f * scale, pos.y - 14.0f * scale), ImVec2(pos.x + 28.0f * scale, pos.y - 4.0f * scale), IM_COL32(140, 120, 95, 255), 2.0f * scale);
+    } else if (charId == "mortis") {
+        // Рунический темный двуручник со светящимися рунами
+        drawList->AddLine(ImVec2(pos.x + 18.0f * scale, pos.y + 14.0f * scale), ImVec2(pos.x + 30.0f * scale, pos.y - 28.0f * scale), IM_COL32(40, 30, 50, 255), 4.5f * scale);
+        drawList->AddLine(ImVec2(pos.x + 20.0f * scale, pos.y + 8.0f * scale), ImVec2(pos.x + 28.0f * scale, pos.y - 22.0f * scale), IM_COL32(80, 220, 255, 255), 2.0f * scale);
+    } else if (charId == "siegfried") {
+        // Драконьи крылья-наплечники
+        drawList->AddTriangleFilled(ImVec2(pos.x - 22.0f * scale, pos.y - 10.0f * scale), ImVec2(pos.x - 34.0f * scale, pos.y - 24.0f * scale), ImVec2(pos.x - 18.0f * scale, pos.y - 2.0f * scale), IM_COL32(220, 60, 40, 255));
+        drawList->AddLine(ImVec2(pos.x + 18.0f * scale, pos.y + 12.0f * scale), ImVec2(pos.x + 30.0f * scale, pos.y - 26.0f * scale), IM_COL32(255, 180, 70, 255), 4.0f * scale);
+    } else if (charId == "sylvana") {
+        // Ветряные серпы
+        drawArc(drawList, ImVec2(pos.x + 22.0f * scale, pos.y + 8.0f * scale), 10.0f * scale, 3.14f, 6.28f, IM_COL32(115, 240, 190, 255), 12, 3.0f * scale);
+    } else if (charId == "drake") {
+        // Повязка на глазу и абордажный палаш
+        drawList->AddLine(ImVec2(pos.x + 16.0f * scale, pos.y + 8.0f * scale), ImVec2(pos.x + 30.0f * scale, pos.y - 16.0f * scale), IM_COL32(210, 225, 240, 255), 3.5f * scale);
+    } else if (charId == "cormac") {
+        // Оленьи рога и живой посох с листвой
+        drawList->AddLine(ImVec2(pos.x - 10.0f * scale, pos.y - 32.0f * scale), ImVec2(pos.x - 24.0f * scale, pos.y - 48.0f * scale), IM_COL32(160, 110, 50, 255), 3.5f * scale);
+        drawList->AddLine(ImVec2(pos.x + 10.0f * scale, pos.y - 32.0f * scale), ImVec2(pos.x + 24.0f * scale, pos.y - 48.0f * scale), IM_COL32(160, 110, 50, 255), 3.5f * scale);
+        drawList->AddLine(ImVec2(pos.x + 22.0f * scale, pos.y - 26.0f * scale), ImVec2(pos.x + 18.0f * scale, pos.y + 36.0f * scale), IM_COL32(130, 90, 45, 255), 3.5f * scale);
+        drawList->AddCircleFilled(ImVec2(pos.x + 22.0f * scale, pos.y - 26.0f * scale), 4.5f * scale, IM_COL32(120, 240, 80, 255));
+    }
+}
+
+void ScreenManager::renderAnimatedEnemyModel(ImDrawList* drawList, const ImVec2& center, const CombatEnemy& enemy, bool isTarget, float animTime, float scale) {
+    float bob = sinf(animTime * 2.8f + 1.2f) * 5.0f * scale;
+    float breath = sinf(animTime * 2.0f) * 2.0f * scale;
+    ImVec2 pos = ImVec2(center.x, center.y + bob);
+
+    // 1. Тень монстра
+    float rShadow = (enemy.rank == EnemyRank::Boss ? 42.0f : enemy.rank == EnemyRank::Elite ? 32.0f : 24.0f) * scale;
+    drawEllipseFilled(drawList, ImVec2(center.x, center.y + 40.0f * scale), rShadow, 10.0f * scale, IM_COL32(0, 0, 0, 120));
+
+    // 2. Индикатор цели атаки (Targeting reticle)
+    if (isTarget) {
+        float p = sinf(animTime * 5.0f) * 0.3f + 0.7f;
+        drawList->AddCircle(ImVec2(center.x, center.y + 40.0f * scale), rShadow + 6.0f, IM_COL32(255, 45, 45, (int)(220 * p)), 32, 2.5f);
+        drawList->AddCircle(ImVec2(pos.x, pos.y), 34.0f * scale, IM_COL32(255, 50, 50, (int)(40 * p)), 24);
+    }
+
+    // 3. Аура ранга (Элита / Босс)
+    if (enemy.rank == EnemyRank::Elite) {
+        float p = sinf(animTime * 4.0f) * 0.3f + 0.7f;
+        drawList->AddCircle(ImVec2(pos.x, pos.y), 38.0f * scale, IM_COL32(215, 60, 255, (int)(110 * p)), 24, 2.0f);
+    } else if (enemy.rank == EnemyRank::Boss) {
+        float p = sinf(animTime * 5.0f) * 0.4f + 0.6f;
+        drawList->AddCircle(ImVec2(pos.x, pos.y), 48.0f * scale, IM_COL32(255, 40, 40, (int)(140 * p)), 24, 3.0f);
+    }
+
+    // 4. Тело монстра
+    ImU32 monsterCol = (enemy.rank == EnemyRank::Boss) ? IM_COL32(80, 20, 25, 255) :
+                       (enemy.rank == EnemyRank::Elite) ? IM_COL32(70, 25, 90, 255) :
+                                                          IM_COL32(40, 42, 48, 255);
+    ImU32 outlineCol = (enemy.rank == EnemyRank::Boss) ? IM_COL32(255, 60, 50, 255) :
+                       (enemy.rank == EnemyRank::Elite) ? IM_COL32(255, 215, 60, 255) :
+                                                          IM_COL32(160, 165, 180, 255);
+
+    // Torso / Silhouette
+    float bodyW = (enemy.rank == EnemyRank::Boss ? 30.0f : enemy.rank == EnemyRank::Elite ? 24.0f : 18.0f) + breath;
+    drawList->AddRectFilled(ImVec2(pos.x - bodyW * scale, pos.y - 18.0f * scale),
+                           ImVec2(pos.x + bodyW * scale, pos.y + 34.0f * scale),
+                           monsterCol, 8.0f * scale);
+    drawList->AddRect(ImVec2(pos.x - bodyW * scale, pos.y - 18.0f * scale),
+                      ImVec2(pos.x + bodyW * scale, pos.y + 34.0f * scale),
+                      outlineCol, 8.0f * scale, 0, 2.0f);
+
+    // Голова
+    float headR = (enemy.rank == EnemyRank::Boss ? 16.0f : enemy.rank == EnemyRank::Elite ? 13.0f : 11.0f) * scale;
+    drawList->AddCircleFilled(ImVec2(pos.x, pos.y - 28.0f * scale), headR, monsterCol);
+    drawList->AddCircle(ImVec2(pos.x, pos.y - 28.0f * scale), headR, outlineCol, 24, 2.0f);
+
+    // Рога / Шипы для элиты и босса
+    if (enemy.rank == EnemyRank::Boss || enemy.rank == EnemyRank::Elite) {
+        ImVec2 hLeft = ImVec2(pos.x - (headR + 10.0f * scale), pos.y - (38.0f * scale));
+        ImVec2 hRight = ImVec2(pos.x + (headR + 10.0f * scale), pos.y - (38.0f * scale));
+        drawList->AddTriangleFilled(ImVec2(pos.x - headR * 0.6f, pos.y - 32.0f * scale),
+                                   hLeft,
+                                   ImVec2(pos.x - headR * 0.2f, pos.y - 24.0f * scale),
+                                   outlineCol);
+        drawList->AddTriangleFilled(ImVec2(pos.x + headR * 0.6f, pos.y - 32.0f * scale),
+                                   hRight,
+                                   ImVec2(pos.x + headR * 0.2f, pos.y - 24.0f * scale),
+                                   outlineCol);
+    }
+
+    // Зловещие светящиеся глаза
+    ImU32 eyeCol = (enemy.rank == EnemyRank::Boss) ? IM_COL32(255, 30, 30, 255) :
+                   (enemy.rank == EnemyRank::Elite) ? IM_COL32(230, 70, 255, 255) :
+                                                      IM_COL32(255, 200, 50, 255);
+    drawEllipseFilled(drawList, ImVec2(pos.x - 5.0f * scale, pos.y - 29.0f * scale), 3.0f * scale, 2.0f * scale, eyeCol);
+    drawEllipseFilled(drawList, ImVec2(pos.x - 10.0f * scale, pos.y - 29.0f * scale), 3.0f * scale, 2.0f * scale, eyeCol);
+}
+
+void ScreenManager::renderCombatVisualEffects(ImDrawList* drawList, const ImVec2& arenaPos, float arenaW, float arenaH) {
+    if (!combatAnim.isPlaying) return;
+
+    combatAnim.timer += ImGui::GetIO().DeltaTime;
+    float progress = std::clamp(combatAnim.timer / combatAnim.duration, 0.0f, 1.0f);
+
+    float heroStartX = arenaPos.x + 80.0f;
+    float heroStepX = 110.0f;
+    float heroBaseY = arenaPos.y + arenaH * 0.50f;
+
+    float enemyStartX = arenaPos.x + arenaW - 90.0f;
+    float enemyStepX = 120.0f;
+    float enemyBaseY = arenaPos.y + arenaH * 0.50f;
+
+    size_t hIdx = std::min(combatAnim.heroIndex, combatSquad.size() - 1);
+    size_t eIdx = std::min(combatAnim.targetIndex, combatEnemies.size() - 1);
+
+    ImVec2 heroPos = ImVec2(heroStartX + hIdx * heroStepX, heroBaseY);
+    ImVec2 enemyPos = ImVec2(enemyStartX - eIdx * enemyStepX, enemyBaseY);
+
+    // 1. АНИМАЦИЯ АТАКИ ГЕРОЯ ПО ПЕРСОНАЖУ
+    const std::string& cid = combatAnim.attackerId;
+    size_t sIdx = combatAnim.skillIndex;
+
+    if (cid == "adeir") {
+        // Огненный шар или огненный смерч
+        float projX = heroPos.x + (enemyPos.x - heroPos.x) * progress;
+        float projY = heroPos.y + (enemyPos.y - heroPos.y) * progress - sinf(progress * 3.1415f) * 40.0f;
+        drawList->AddCircleFilled(ImVec2(projX, projY), 14.0f * (1.0f + (sIdx == 2 ? 1.0f : 0.0f)), IM_COL32(255, 110, 30, 240));
+        drawList->AddCircleFilled(ImVec2(projX, projY), 8.0f, IM_COL32(255, 230, 90, 255));
+        if (progress > 0.45f) {
+            drawList->AddCircle(enemyPos, 45.0f * progress, IM_COL32(255, 120, 30, (int)(255 * (1.0f - progress))), 24, 4.0f);
+        }
+    } else if (cid == "renwick" || cid == "roland") {
+        // Сияющий серебряный рассекающий удар мечом
+        if (progress >= 0.35f && progress <= 0.85f) {
+            float aProg = (progress - 0.35f) / 0.5f;
+            ImVec2 p1 = ImVec2(enemyPos.x - 30.0f, enemyPos.y - 45.0f + aProg * 80.0f);
+            ImVec2 p2 = ImVec2(enemyPos.x + 30.0f, enemyPos.y + 45.0f - aProg * 80.0f);
+            drawList->AddLine(p1, p2, IM_COL32(180, 230, 255, 255), 5.0f);
+            drawList->AddLine(ImVec2(p1.x - 4, p1.y), ImVec2(p2.x + 4, p2.y), IM_COL32(255, 255, 255, 255), 2.5f);
+        }
+    } else if (cid == "garosh" || cid == "tauros") {
+        // Земляной удар и кровавый раскол
+        if (progress >= 0.4f) {
+            drawList->AddCircle(enemyPos, 50.0f * (progress - 0.4f) * 1.8f, IM_COL32(255, 60, 40, (int)(255 * (1.0f - progress))), 16, 4.0f);
+            drawList->AddLine(ImVec2(enemyPos.x - 35.0f, enemyPos.y + 35.0f), ImVec2(enemyPos.x + 35.0f, enemyPos.y + 35.0f), IM_COL32(240, 160, 60, 220), 4.0f);
+        }
+    } else if (cid == "vex" || cid == "sylvana") {
+        // Свистящая стрела с ветряным шлейфом
+        float aX = heroPos.x + (enemyPos.x - heroPos.x) * progress;
+        float aY = heroPos.y + (enemyPos.y - heroPos.y) * progress;
+        drawList->AddLine(ImVec2(aX - 25.0f, aY), ImVec2(aX, aY), IM_COL32(120, 240, 150, 255), 3.5f);
+        drawList->AddCircleFilled(ImVec2(aX, aY), 4.0f, IM_COL32(255, 255, 255, 255));
+    } else if (cid == "kaelim") {
+        // Фиолетовый крестообразный разрез из тени (X-Slash)
+        if (progress >= 0.35f) {
+            drawList->AddLine(ImVec2(enemyPos.x - 28.0f, enemyPos.y - 28.0f), ImVec2(enemyPos.x + 28.0f, enemyPos.y + 28.0f), IM_COL32(220, 90, 255, 255), 4.0f);
+            drawList->AddLine(ImVec2(enemyPos.x + 28.0f, enemyPos.y - 28.0f), ImVec2(enemyPos.x - 28.0f, enemyPos.y + 28.0f), IM_COL32(220, 90, 255, 255), 4.0f);
+        }
+    } else if (cid == "velari" || cid == "lumien") {
+        // Нисходящий столб небесного света
+        if (progress >= 0.3f) {
+            float bW = 28.0f * (1.0f - fabsf(progress - 0.6f) * 2.0f);
+            drawList->AddRectFilled(ImVec2(enemyPos.x - bW, arenaPos.y + 10.0f), ImVec2(enemyPos.x + bW, enemyPos.y + 40.0f), IM_COL32(255, 240, 120, 180));
+            drawList->AddCircleFilled(enemyPos, 35.0f, IM_COL32(255, 255, 200, 200));
+        }
+    } else if (cid == "silas" || cid == "mortis") {
+        // Свистящие зеленые черепа пустоты
+        float skX = heroPos.x + (enemyPos.x - heroPos.x) * progress;
+        float skY = heroPos.y + (enemyPos.y - heroPos.y) * progress + sinf(progress * 12.0f) * 15.0f;
+        drawList->AddCircleFilled(ImVec2(skX, skY), 10.0f, IM_COL32(60, 240, 130, 240));
+        drawList->AddCircle(ImVec2(skX, skY), 14.0f, IM_COL32(180, 255, 200, 180), 16, 2.0f);
+    } else if (cid == "mira") {
+        // Ледяные копья и замораживающий взрыв
+        float icX = heroPos.x + (enemyPos.x - heroPos.x) * progress;
+        float icY = heroPos.y + (enemyPos.y - heroPos.y) * progress;
+        drawList->AddLine(ImVec2(icX - 20.0f, icY), ImVec2(icX, icY), IM_COL32(140, 230, 255, 255), 4.5f);
+        if (progress > 0.5f) {
+            drawList->AddCircle(enemyPos, 40.0f * (progress - 0.5f) * 2.0f, IM_COL32(160, 240, 255, 220), 24, 3.0f);
+        }
+    } else {
+        // Стандартный эффект удара
+        if (progress >= 0.4f && progress <= 0.8f) {
+            drawList->AddCircleFilled(enemyPos, 30.0f, IM_COL32(255, 220, 100, 180));
+        }
+    }
+
+    // 2. ВСПЛЫВАЮЩИЙ ТЕКСТ УРОНА ПРИ ПОПАДАНИИ
+    if (progress >= 0.45f) {
+        float floatY = (progress - 0.45f) * 50.0f;
+        std::string dmgText = (combatAnim.isCrit ? "[*] КРИТ! -" : "-") + std::to_string(static_cast<int>(combatAnim.damage)) + " HP";
+        ImVec4 tColor = combatAnim.isCrit ? ImVec4(1.0f, 0.25f, 0.25f, 1.0f) : ImVec4(1.0f, 0.85f, 0.20f, 1.0f);
+        drawList->AddText(ImVec2(enemyPos.x - 28.0f, enemyPos.y - 65.0f - floatY),
+                          ImGui::ColorConvertFloat4ToU32(tColor), dmgText.c_str());
+    }
+
+    // 3. ПРИМЕНЕНИЕ УРОНА И ЗАВЕРШЕНИЕ
+    if (progress >= 0.50f && !combatAnim.damageApplied) {
+        combatAnim.damageApplied = true;
+        if (combatAnim.targetIndex < combatEnemies.size()) {
+            auto& target = combatEnemies[combatAnim.targetIndex];
+            double netDmg = combatAnim.damage;
+            if (target.shield > 0.0) {
+                double absS = std::min(target.shield, netDmg);
+                target.shield -= absS;
+                netDmg -= absS;
+            }
+            target.currentHp = std::max(0.0, target.currentHp - netDmg);
+
+            // Вампиризм атакующего
+            if (combatAnim.heroIndex < combatSquad.size()) {
+                auto& hero = combatSquad[combatAnim.heroIndex];
+                if (hero.stats[StatIndex::Vampirism] > 0.0 && netDmg > 0.0) {
+                    double healV = netDmg * hero.stats[StatIndex::Vampirism];
+                    hero.currentHp = std::min(hero.maxHp, hero.currentHp + healV);
+                }
+            }
+
+            std::string critPrefix = combatAnim.isCrit ? "[КРИТ!] " : "";
+            ImVec4 logColor = combatAnim.isCrit ? ImVec4(1.0f, 0.45f, 0.1f, 1.0f) : ImVec4(0.95f, 0.95f, 0.35f, 1.0f);
+            logCombat(critPrefix + combatSquad[hIdx].name + " наносит '" + combatAnim.skillName + "' по " + target.name + " (-" + std::to_string(static_cast<int>(netDmg)) + " HP)!", logColor);
+
+            if (!target.isAlive()) {
+                logCombat("[ПОБЕЖДЕН] " + target.name + " повержен!", ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
+            }
+        }
+    }
+
+    if (progress >= 1.0f) {
+        combatAnim.isPlaying = false;
+
+        // Проверка победы
+        bool anyEnemyAlive = false;
+        for (const auto& e : combatEnemies) {
+            if (e.isAlive()) { anyEnemyAlive = true; break; }
+        }
+
+        if (!anyEnemyAlive) {
+            combatPhase = CombatPhase::Victory;
+            logCombat("=== ПОБЕДА! Все противники повержены! ===", ImVec4(0.3f, 1.0f, 0.3f, 1.0f));
+            return;
+        }
+
+        // Если текущая цель пала, переключаем на следующего живого
+        if (selectedEnemyTarget >= 0 && !combatEnemies[selectedEnemyTarget].isAlive()) {
+            for (size_t i = 0; i < combatEnemies.size(); ++i) {
+                if (combatEnemies[i].isAlive()) {
+                    selectedEnemyTarget = static_cast<int>(i);
+                    break;
+                }
+            }
+        }
+
+        executeEnemyTurn();
+    }
+}
+
+void ScreenManager::renderCombatBattlefield(float width, float height) {
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.06f, 0.07f, 0.11f, 0.85f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.50f, 0.40f, 0.25f, 0.70f));
+    ImGui::BeginChild("CombatArenaCanvas", ImVec2(width, height), true, ImGuiWindowFlags_NoScrollbar);
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+    float animTime = static_cast<float>(ImGui::GetTime());
+
+    // Разделительная черта центра поля боя
+    float midX = canvasPos.x + width * 0.5f;
+    drawList->AddLine(ImVec2(midX, canvasPos.y + 10.0f), ImVec2(midX, canvasPos.y + height - 10.0f),
+                      IM_COL32(200, 160, 70, 70), 1.5f);
+
+    // Заголовки сторон
+    drawList->AddText(ImVec2(canvasPos.x + 30.0f, canvasPos.y + 8.0f), IM_COL32(100, 220, 140, 220), "[Атака] ОТРЯД ГЕРОЕВ");
+    drawList->AddText(ImVec2(canvasPos.x + width - 190.0f, canvasPos.y + 8.0f), IM_COL32(255, 90, 90, 220), "[Босс] ВРАЖЕСКИЙ ОТРЯД");
+
+    // Отрисовка отряда героев СЛЕВА (с учетом рывка атакующего)
+    float heroStartX = canvasPos.x + 80.0f;
+    float heroStepX = 110.0f;
+    float heroBaseY = canvasPos.y + height * 0.50f;
+
+    for (size_t i = 0; i < combatSquad.size(); ++i) {
+        auto& hero = combatSquad[i];
+        if (!hero.isAlive()) continue;
+        bool isActive = (i == activeCharacterIndex);
+        float hX = heroStartX + i * heroStepX + (isActive ? 25.0f : 0.0f);
+        float hY = heroBaseY + (isActive ? 12.0f : -6.0f);
+
+        // Рывок вперед во время анимации атаки
+        if (combatAnim.isPlaying && combatAnim.isHero && combatAnim.heroIndex == i) {
+            float prog = combatAnim.timer / combatAnim.duration;
+            hX += sinf(prog * 3.1415f) * 120.0f;
+        }
+
+        renderAnimatedHeroModel(drawList, ImVec2(hX, hY), hero.id, isActive, animTime, isActive ? 1.25f : 1.0f);
+    }
+
+    // Отрисовка отряда врагов СПРАВА (с учетом вздрагивания при ударе)
+    float enemyStartX = canvasPos.x + width - 90.0f;
+    float enemyStepX = 120.0f;
+    float enemyBaseY = canvasPos.y + height * 0.50f;
+
+    for (size_t i = 0; i < combatEnemies.size(); ++i) {
+        auto& enemy = combatEnemies[i];
+        if (!enemy.isAlive()) continue;
+        bool isTarget = (static_cast<int>(i) == selectedEnemyTarget);
+        float eX = enemyStartX - i * enemyStepX - (isTarget ? 25.0f : 0.0f);
+        float eY = enemyBaseY + (isTarget ? 12.0f : -6.0f);
+
+        // Отдача/вздрагивание назад при получении урона
+        if (combatAnim.isPlaying && combatAnim.targetIndex == i && combatAnim.timer >= combatAnim.duration * 0.45f) {
+            float fProg = (combatAnim.timer - combatAnim.duration * 0.45f) / (combatAnim.duration * 0.55f);
+            eX += sinf(fProg * 3.1415f) * 22.0f;
+        }
+
+        renderAnimatedEnemyModel(drawList, ImVec2(eX, eY), enemy, isTarget, animTime,
+                                (enemy.rank == EnemyRank::Boss) ? 1.45f :
+                                (enemy.rank == EnemyRank::Elite) ? 1.20f : 1.0f);
+    }
+
+    // Отрисовка летящих снарядов, магических волн и всплывающего урона
+    renderCombatVisualEffects(drawList, canvasPos, width, height);
+
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+}
+
 void ScreenManager::renderCombat() {
     if (!isCombatInitialized) {
         initCombatState();
@@ -3107,16 +4960,16 @@ void ScreenManager::renderCombat() {
 
     switch (combatPhase) {
     case CombatPhase::PlayerTurn:
-        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.35f, 1.0f), "[ ВАШ ХОД (ИГРОК) ]");
+        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.35f, 1.0f), "ВАШ ХОД (ИГРОК)");
         break;
     case CombatPhase::EnemyTurn:
-        ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "[ ХОД ПРОТИВНИКА ]");
+        ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "ХОД ПРОТИВНИКА");
         break;
     case CombatPhase::Victory:
-        ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "[ ПОБЕДА! ]");
+        ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.4f, 1.0f), "ПОБЕДА!");
         break;
     case CombatPhase::Defeat:
-        ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "[ ПОРАЖЕНИЕ ]");
+        ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "ПОРАЖЕНИЕ");
         break;
     }
 
@@ -3131,6 +4984,12 @@ void ScreenManager::renderCombat() {
     ImGui::PopStyleColor();
 
     ImGui::Separator();
+    ImGui::Spacing();
+
+    // =========================================================================
+    // АНИМИРОВАННАЯ БОЕВАЯ АРЕНА: МОДЕЛИ ГЕРОЕВ СЛЕВА И ПРОТИВНИКОВ СПРАВА
+    // =========================================================================
+    renderCombatBattlefield(ImGui::GetContentRegionAvail().x, 160.0f);
     ImGui::Spacing();
 
     // =========================================================================
@@ -3176,7 +5035,7 @@ void ScreenManager::renderCombat() {
         if (hero.isAlive()) {
             if (isActive) {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.55f, 0.25f, 1.0f));
-                ImGui::Button(("✦ " + keyBadge + hero.name + " [АКТИВЕН] ✦").c_str(), ImVec2(-1, 24));
+                ImGui::Button(("* " + keyBadge + hero.name + " (АКТИВЕН) *").c_str(), ImVec2(-1, 24));
                 ImGui::PopStyleColor();
             } else {
                 if (ImGui::Button((keyBadge + hero.name).c_str(), ImVec2(-1, 24))) {
@@ -3206,7 +5065,7 @@ void ScreenManager::renderCombat() {
         ImGui::Text("HP: %.0f / %.0f", hero.currentHp, hero.maxHp);
         if (hero.shield > 0.0) {
             ImGui::SameLine();
-            ImGui::TextColored(ImVec4(0.3f, 0.85f, 1.0f, 1.0f), "[🛡 +%.0f]", hero.shield);
+            ImGui::TextColored(ImVec4(0.3f, 0.85f, 1.0f, 1.0f), "(Щит: +%.0f)", hero.shield);
         }
 
         // Стаки героя
@@ -3215,7 +5074,7 @@ void ScreenManager::renderCombat() {
         if (hero.skillStacks > 0) {
             ImGui::SameLine();
             std::string pips = "";
-            for (int p = 0; p < std::min(hero.skillStacks, 5); ++p) pips += "◆";
+            for (int p = 0; p < std::min(hero.skillStacks, 5); ++p) pips += "*";
             ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "%s", pips.c_str());
         }
 
@@ -3247,12 +5106,12 @@ void ScreenManager::renderCombat() {
 
         ImGui::SameLine(0.0f, 20.0f);
         ImVec4 stackBadgeColor = (activeHero.skillStacks > 0) ? ImVec4(1.0f, 0.85f, 0.20f, 1.0f) : ImVec4(0.65f, 0.65f, 0.70f, 1.0f);
-        ImGui::TextColored(stackBadgeColor, "[ ✦ КОЛИЧЕСТВО СТАКОВ: %d ]", activeHero.skillStacks);
+        ImGui::TextColored(stackBadgeColor, "[ * КОЛИЧЕСТВО СТАКОВ: %d ]", activeHero.skillStacks);
 
         if (activeHero.skillStacks > 0) {
             ImGui::SameLine(0.0f, 8.0f);
             std::string pips = "";
-            for (int p = 0; p < std::min(activeHero.skillStacks, 8); ++p) pips += "◆";
+            for (int p = 0; p < std::min(activeHero.skillStacks, 8); ++p) pips += "*";
             ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.20f, 1.0f), "%s", pips.c_str());
         }
 
@@ -3303,7 +5162,7 @@ void ScreenManager::renderCombat() {
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
                     ImGui::BeginTooltip();
                     ImGui::PushTextWrapPos(320.0f);
-                    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "⚔ %s", skill->getName().c_str());
+                    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "%s", skill->getName().c_str());
                     ImGui::Separator();
                     std::string fullDesc = getSkillDetailedDescription(skill, activeHero, sIdx);
                     ImGui::TextUnformatted(fullDesc.c_str());
@@ -3330,7 +5189,7 @@ void ScreenManager::renderCombat() {
                 k0.c_str(), previewVal0, k1.c_str(), previewVal1, k2.c_str(), previewVal2);
 
             ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.25f, 1.0f),
-                "★ Эффект стаков: %d (усиливает урон и защитные параметры)", activeHero.skillStacks);
+                "[*] Эффект стаков: %d (усиливает урон и защитные параметры)", activeHero.skillStacks);
         }
 
         ImGui::Spacing();
@@ -3355,7 +5214,7 @@ void ScreenManager::renderCombat() {
         ImGui::Text("Крит. урон: %.0f%%", activeHero.stats[StatIndex::CritDamage] * 100.0);
         ImGui::Text("Вампиризм: %.1f%%", activeHero.stats[StatIndex::Vampirism] * 100.0);
         ImGui::Text("Бонус урона: +%.1f%%", activeHero.stats[StatIndex::DamageBonus] * 100.0);
-        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.25f, 1.0f), "✦ Стаки героя: %d", activeHero.skillStacks);
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.25f, 1.0f), "* Стаки героя: %d", activeHero.skillStacks);
         ImGui::Columns(1);
 
         ImGui::EndChild();
@@ -3392,7 +5251,7 @@ void ScreenManager::renderCombat() {
             ImGui::SameLine(rightColW - 145.0f);
             if (isTarget) {
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.2f, 0.2f, 1.0f));
-                ImGui::Button("[ 🎯 ЦЕЛЬ ]##TargetActive", ImVec2(120, 22));
+                ImGui::Button("ТЕКУЩАЯ ЦЕЛЬ##TargetActive", ImVec2(120, 22));
                 ImGui::PopStyleColor();
             } else {
                 if (ImGui::Button("Выбрать цель##SetTarget", ImVec2(120, 22))) {
@@ -3412,7 +5271,7 @@ void ScreenManager::renderCombat() {
             // Описание навыков противников убрано по требованию пользователя
         } else {
             ImGui::SameLine(rightColW - 145.0f);
-            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "[ ПОБЕЖДЕН ]");
+            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "ПОБЕЖДЕН");
         }
 
         ImGui::EndChild();
@@ -3429,7 +5288,7 @@ void ScreenManager::renderCombat() {
     // =========================================================================
     ImGui::Spacing();
     ImGui::Separator();
-    ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.40f, 1.0f), "📜 ЖУРНАЛ БОЯ:");
+    ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.40f, 1.0f), "ЖУРНАЛ БОЯ:");
     ImGui::Spacing();
 
     float logHeight = 140.0f;
@@ -3670,8 +5529,25 @@ void ScreenManager::renderCrafting() {
     };
 
     static std::vector<CraftRecipe> craftRecipes = {
+        {"old_cleaver", {"rusty_blade", "scrap_metal"}},
         {"old_cleaver", {"rusty_blade", "iron_ore", "iron_ore"}},
-        {"berserker_axe", {"old_cleaver", "iron_ore", "iron_ore"}}
+        {"rusty_blade", {"scrap_metal", "scrap_metal"}},
+        {"bastion_blade", {"old_cleaver", "iron_ore", "scrap_metal"}},
+        {"bastion_blade", {"iron_ore", "mithril_ore", "scrap_metal"}},
+        {"berserker_axe", {"old_cleaver", "iron_ore", "iron_ore"}},
+        {"berserker_axe", {"old_cleaver", "iron_ore", "coal_dust"}},
+        {"shadow_dagger", {"scrap_metal", "iron_ore"}},
+        {"shadow_dagger", {"scrap_metal", "void_shard", "mithril_ore"}},
+        {"hunter_bow", {"scrap_metal", "iron_ore", "scrap_metal"}},
+        {"hunter_bow", {"scrap_metal", "scrap_metal", "mithril_ore"}},
+        {"vampire_blade", {"old_cleaver", "fire_crystal", "iron_ore"}},
+        {"vampire_blade", {"old_cleaver", "fire_crystal", "mithril_ore"}},
+        {"apprentice_staff", {"iron_ore", "glowing_moss", "fire_crystal"}},
+        {"apprentice_staff", {"fire_crystal", "void_shard", "celestial_ingot"}},
+        {"guardian_helm", {"iron_ore", "iron_ore", "scrap_metal"}},
+        {"guardian_armor", {"iron_ore", "iron_ore", "iron_ore"}},
+        {"guardian_ring", {"iron_ore", "mithril_ore"}},
+        {"guardian_amulet", {"iron_ore", "fire_crystal"}}
     };
 
     std::string matchedResult = "";
@@ -3713,4 +5589,227 @@ void ScreenManager::renderCrafting() {
     }
 
     ImGui::Columns(1);
+}
+
+
+// =============================================================================
+// ИНТЕРАКТИВНАЯ ДОБЫЧА РУДЫ И МИНЕРАЛОВ (МИНИ-ИГРА)
+// =============================================================================
+
+void ScreenManager::renderMining() {
+    ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+    float panelW = std::min(960.0f, displaySize.x - 60.0f);
+    float panelH = std::min(680.0f, displaySize.y - 60.0f);
+    ImVec2 panelPos = ImVec2((displaySize.x - panelW) * 0.5f, (displaySize.y - panelH) * 0.5f);
+
+    ImGui::SetNextWindowPos(panelPos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(panelW, panelH), ImGuiCond_Always);
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse;
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.08f, 0.09f, 0.13f, 0.96f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.85f, 0.70f, 0.30f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 2.0f);
+
+    std::string title = "Добыча Руды и Минералов — Этаж " + std::to_string(currentMiningFloor) + "##MiningWindow";
+    if (ImGui::Begin(title.c_str(), nullptr, flags)) {
+        // Заголовок и кнопка назад
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.35f, 1.0f), "=== ЖИЛА РЕДКИХ МИНЕРАЛОВ (ЭТАЖ %d) ===", currentMiningFloor);
+        ImGui::SameLine(panelW - 200.0f);
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.45f, 0.80f, 1.0f));
+        if (ImGui::Button("<- На карту##ExitMining", ImVec2(160.0f, 26.0f))) {
+            currentScreen = ScreenState::Map;
+        }
+        ImGui::PopStyleColor();
+
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // Верхний информационный блок
+        ImGui::TextWrapped("Перед вами обнажилась богатая кристаллическая жила. Сконцентрируйтесь и нанесите удар киркой в резонансную зеленую зону, чтобы добыть редкие самородки и кристаллы для ковки!");
+        ImGui::Spacing();
+
+        // Статистика попыток
+        ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Осталось ударов киркой: %d / 5", miningAttemptsLeft);
+        ImGui::SameLine(300.0f);
+        ImGui::TextColored(ImVec4(0.50f, 0.95f, 0.55f, 1.0f), "Всего добыто ресурсов за подход: %d ед.", miningTotalYield);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // Интерактивная анимационная шкала
+        miningTimer += ImGui::GetIO().DeltaTime * (2.8f + currentMiningFloor * 0.12f);
+        float strikePos = (sinf(miningTimer * 3.2f) + 1.0f) * 0.5f; // 0.0 .. 1.0
+
+        float barW = panelW - 80.0f;
+        float barH = 50.0f;
+        ImVec2 barMin = ImGui::GetCursorScreenPos();
+        ImVec2 barMax = ImVec2(barMin.x + barW, barMin.y + barH);
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+        // Фоновый контур шкалы
+        drawList->AddRectFilled(barMin, barMax, IM_COL32(25, 28, 38, 255), 8.0f);
+        drawList->AddRect(barMin, barMax, IM_COL32(140, 150, 175, 200), 8.0f, 0, 2.0f);
+
+        // Зоны:
+        // 1. Обычная зона (края): серый
+        // 2. Хорошая зона (0.24 .. 0.76): янтарный
+        float goodMinX = barMin.x + barW * 0.24f;
+        float goodMaxX = barMin.x + barW * 0.76f;
+        drawList->AddRectFilled(ImVec2(goodMinX, barMin.y + 3.0f), ImVec2(goodMaxX, barMax.y - 3.0f), IM_COL32(200, 140, 30, 90));
+
+        // 3. Идеальная / Критическая зона (0.43 .. 0.57): светящийся изумруд с пульсацией
+        float critMinX = barMin.x + barW * 0.43f;
+        float critMaxX = barMin.x + barW * 0.57f;
+        float pulse = sinf(miningTimer * 6.0f) * 0.25f + 0.75f;
+        drawList->AddRectFilled(ImVec2(critMinX, barMin.y + 2.0f), ImVec2(critMaxX, barMax.y - 2.0f),
+            IM_COL32((int)(40 * pulse), (int)(230 * pulse), (int)(140 * pulse), 180));
+        drawList->AddRect(ImVec2(critMinX, barMin.y + 2.0f), ImVec2(critMaxX, barMax.y - 2.0f),
+            IM_COL32(180, 255, 200, 230), 0.0f, 0, 1.8f);
+
+        // Разделительные риски и надписи
+        drawList->AddText(ImVec2(barMin.x + 14.0f, barMin.y + 16.0f), IM_COL32(160, 170, 190, 220), "Скол (Базовая руда)");
+        drawList->AddText(ImVec2(barMax.x - 180.0f, barMin.y + 16.0f), IM_COL32(160, 170, 190, 220), "Скол (Базовая руда)");
+        drawList->AddText(ImVec2(barMin.x + barW * 0.27f, barMin.y + 16.0f), IM_COL32(245, 190, 80, 230), "Хороший удар");
+        drawList->AddText(ImVec2(barMin.x + barW * 0.60f, barMin.y + 16.0f), IM_COL32(245, 190, 80, 230), "Хороший удар");
+        drawList->AddText(ImVec2(barMin.x + barW * 0.44f, barMin.y + 16.0f), IM_COL32(255, 255, 255, 255), "ТОЧНЫЙ РЕЗОНАНС!");
+
+        // Бегунок-указатель удара
+        float needleX = barMin.x + strikePos * barW;
+        drawList->AddLine(ImVec2(needleX, barMin.y - 6.0f), ImVec2(needleX, barMax.y + 6.0f), IM_COL32(255, 45, 45, 255), 3.5f);
+        // Треугольники указателя сверху и снизу
+        drawList->AddTriangleFilled(
+            ImVec2(needleX, barMin.y + 2.0f),
+            ImVec2(needleX - 7.0f, barMin.y - 8.0f),
+            ImVec2(needleX + 7.0f, barMin.y - 8.0f),
+            IM_COL32(255, 230, 60, 255)
+        );
+        drawList->AddTriangleFilled(
+            ImVec2(needleX, barMax.y - 2.0f),
+            ImVec2(needleX - 7.0f, barMax.y + 8.0f),
+            ImVec2(needleX + 7.0f, barMax.y + 8.0f),
+            IM_COL32(255, 230, 60, 255)
+        );
+
+        ImGui::Dummy(ImVec2(barW, barH + 16.0f));
+        ImGui::Spacing();
+
+        // Кнопка удара киркой
+        bool canStrike = (miningAttemptsLeft > 0);
+        float btnW = 340.0f;
+        float btnH = 46.0f;
+        ImGui::SetCursorPosX((panelW - btnW) * 0.5f);
+
+        if (!canStrike) {
+            ImGui::BeginDisabled();
+            ImGui::Button("Жила истощена (0 ударов)", ImVec2(btnW, btnH));
+            ImGui::EndDisabled();
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.65f, 0.35f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.28f, 0.80f, 0.42f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.15f, 0.55f, 0.28f, 1.0f));
+
+            if (ImGui::Button("[УДАР]  НАНЕСТИ ТОЧНЫЙ УДАР КИРКОЙ!##Strike", ImVec2(btnW, btnH))) {
+                miningAttemptsLeft--;
+                float dist = std::fabs(strikePos - 0.5f);
+
+                if (dist <= 0.08f) {
+                    // Критический точный удар
+                    if (currentMiningFloor >= 8) {
+                        playerInventory.addItem("celestial_ingot", 1);
+                        playerInventory.addItem("void_shard", 2);
+                        playerInventory.addItem("mithril_ore", 3);
+                        miningTotalYield += 6;
+                        miningFeedbackMsg = "[*] КРИТИЧЕСКИЙ УДАР! Жила раскололась: получен [Небесный слиток x1], [Осколок пустоты x2], [Мифриловая руда x3]!";
+                    } else if (currentMiningFloor >= 4) {
+                        playerInventory.addItem("fire_crystal", 2);
+                        playerInventory.addItem("mithril_ore", 2);
+                        playerInventory.addItem("iron_ore", 4);
+                        miningTotalYield += 8;
+                        miningFeedbackMsg = "[*] КРИТИЧЕСКИЙ УДАР! Жила озарилась жаром: получен [Огненный кристалл x2], [Мифриловая руда x2], [Железная руда x4]!";
+                    } else {
+                        playerInventory.addItem("mithril_ore", 2);
+                        playerInventory.addItem("iron_ore", 4);
+                        playerInventory.addItem("scrap_metal", 3);
+                        miningTotalYield += 9;
+                        miningFeedbackMsg = "[*] КРИТИЧЕСКИЙ УДАР! Высечена богатая порода: получен [Мифриловая руда x2], [Железная руда x4], [Обломки металла x3]!";
+                    }
+                    miningFeedbackColor = ImVec4(0.25f, 1.0f, 0.45f, 1.0f);
+                } else if (dist <= 0.26f) {
+                    // Отличный удар
+                    if (currentMiningFloor >= 6) {
+                        playerInventory.addItem("mithril_ore", 1);
+                        playerInventory.addItem("scrap_metal", 3);
+                        playerInventory.addItem("iron_ore", 3);
+                        miningTotalYield += 7;
+                        miningFeedbackMsg = "Отличный удар! Вы откололи увесистые куски: [Мифриловая руда x1], [Железная руда x3], [Обломки металла x3].";
+                    } else {
+                        playerInventory.addItem("iron_ore", 3);
+                        playerInventory.addItem("scrap_metal", 2);
+                        playerInventory.addItem("coal_dust", 2);
+                        miningTotalYield += 7;
+                        miningFeedbackMsg = "Отличный удар! Добыта качественная руда: [Железная руда x3], [Обломки металла x2], [Угольная пыль x2].";
+                    }
+                    miningFeedbackColor = ImVec4(1.0f, 0.85f, 0.35f, 1.0f);
+                } else {
+                    // Базовый скол
+                    playerInventory.addItem("scrap_metal", 2);
+                    playerInventory.addItem("coal_dust", 1);
+                    miningTotalYield += 3;
+                    miningFeedbackMsg = "Скол по краю: задета пустая порода. Добыто: [Обломки металла x2], [Угольная пыль x1].";
+                    miningFeedbackColor = ImVec4(0.75f, 0.80f, 0.85f, 1.0f);
+                }
+            }
+            ImGui::PopStyleColor(3);
+        }
+
+        ImGui::Spacing();
+        if (!miningFeedbackMsg.empty()) {
+            ImGui::SetCursorPosX((panelW - ImGui::CalcTextSize(miningFeedbackMsg.c_str()).x) * 0.5f);
+            ImGui::TextColored(miningFeedbackColor, "%s", miningFeedbackMsg.c_str());
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // Панель запасов ресурсов игрока для ковки
+        ImGui::TextColored(ImVec4(0.40f, 0.85f, 1.0f, 1.0f), "Ваши запасы ресурсов для ковки оружия:");
+        ImGui::Spacing();
+
+        auto& db = GameDatabase::getInstance();
+        std::vector<std::pair<std::string, std::string>> oreResources = {
+            {"iron_ore", "Железная руда"},
+            {"scrap_metal", "Обломки металла"},
+            {"coal_dust", "Угольная пыль"},
+            {"mithril_ore", "Мифриловая руда"},
+            {"fire_crystal", "Огненный кристалл"},
+            {"void_shard", "Осколок пустоты"},
+            {"celestial_ingot", "Небесный слиток"}
+        };
+
+        ImGui::Columns(static_cast<int>(oreResources.size()), "MiningResCols", false);
+        for (const auto& [resId, resName] : oreResources) {
+            int count = playerInventory.getItemCount(resId);
+            auto itItem = db.items.find(resId);
+            if (itItem != db.items.end()) {
+                ImGui::Image(itItem->second->getImGuiTextureID(), ImVec2(48.0f, 48.0f));
+            }
+            ImGui::TextColored(count > 0 ? ImVec4(1.0f, 1.0f, 1.0f, 1.0f) : ImVec4(0.5f, 0.5f, 0.5f, 0.5f), "%s", resName.c_str());
+            ImGui::TextColored(count > 0 ? ImVec4(0.35f, 0.95f, 0.45f, 1.0f) : ImVec4(0.5f, 0.5f, 0.5f, 0.5f), "x%d", count);
+            ImGui::NextColumn();
+        }
+        ImGui::Columns(1);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::TextDisabled("Подсказка: Собранные ресурсы можно использовать на столе создания (Крафтинг) для ковки мечей, топоров, луков и посохов.");
+
+        ImGui::End();
+    }
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar();
 }

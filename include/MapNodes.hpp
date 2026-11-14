@@ -9,7 +9,8 @@ enum class MapNodeType {
     Shop,        // Торговец -> Экран торговли (ScreenState::Shop)
     Combat,      // Сражение -> Экран боя (ScreenState::Combat)
     Cooking,     // Полевой костер -> Экран готовки (ScreenState::Cooking)
-    Crafting     // Полевая мастерская -> Экран создания (ScreenState::Crafting)
+    Crafting,    // Полевая мастерская -> Экран создания (ScreenState::Crafting)
+    ResourceMine // Древняя рудная жила -> Интерактивная добыча руды (ScreenState::Mining)
 };
 
 // Данные о группе врагов для передачи на экран боя
